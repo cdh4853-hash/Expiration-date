@@ -1,0 +1,2216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>출고 소비기한 관리</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+:root{
+  --bg:#0d1117;--s1:#161b22;--s2:#1c2128;--s3:#21262d;
+  --b1:#30363d;--b2:#3d444d;
+  --acc:#58a6ff;--acc2:#bc8cff;--ok:#3fb950;--warn:#d29922;--err:#f85149;
+  --tx:#e6edf3;--tx2:#8b949e;--tx3:#484f58;
+  --r:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;font-size:14px;}
+
+/* ── 레이아웃 ── */
+.app{display:grid;grid-template-rows:56px 1fr;height:100vh;overflow:hidden;}
+.topbar{background:var(--s1);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 20px;gap:14px;z-index:50;flex-shrink:0;}
+.t-logo{width:32px;height:32px;background:linear-gradient(135deg,var(--acc),var(--acc2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.topbar h1{font-size:15px;font-weight:700;}
+.t-sub{font-size:12px;color:var(--tx2);}
+.t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.db-badge{font-size:11px;padding:3px 10px;border-radius:20px;cursor:pointer;border:1px solid;}
+.db-ok{color:var(--ok);background:rgba(63,185,80,.08);border-color:rgba(63,185,80,.25);}
+.db-err{color:var(--err);background:rgba(248,81,73,.08);border-color:rgba(248,81,73,.25);}
+.db-warn{color:var(--warn);background:rgba(210,153,34,.08);border-color:rgba(210,153,34,.25);}
+#clock{font-size:11px;color:var(--tx2);font-family:'JetBrains Mono',monospace;}
+
+.body{display:grid;grid-template-columns:255px 1fr;overflow:hidden;}
+.sidebar{background:var(--s1);border-right:1px solid var(--b1);overflow-y:auto;display:flex;flex-direction:column;}
+.sb-sec{padding:14px 14px 0;}
+.sb-lbl{font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;}
+.di{width:100%;padding:8px 10px;background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);color:var(--tx);font-size:13px;font-family:'Noto Sans KR',sans-serif;}
+.di:focus{outline:none;border-color:var(--acc);}
+.qrow{display:flex;gap:5px;margin-top:6px;}
+.qb{flex:1;padding:5px 0;background:var(--s3);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;font-size:11px;font-family:'Noto Sans KR',sans-serif;transition:.15s;}
+.qb:hover{border-color:var(--acc);color:var(--acc);}
+.plat-list{display:flex;flex-direction:column;gap:3px;padding:0 14px;}
+.plat-row{display:flex;align-items:center;gap:3px;}
+.pb{flex:1;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);border:1px solid transparent;background:transparent;color:var(--tx2);cursor:pointer;font-size:13px;font-family:'Noto Sans KR',sans-serif;transition:.15s;text-align:left;overflow:hidden;}
+.pb:hover{background:var(--s3);color:var(--tx);}
+.pb.active{background:rgba(88,166,255,.1);border-color:var(--acc);color:var(--acc);font-weight:600;}
+.p-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.p-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.p-cnt{background:var(--s3);padding:1px 6px;border-radius:10px;font-size:10px;color:var(--tx2);flex-shrink:0;}
+.p-del{width:22px;height:22px;border:none;background:transparent;color:var(--tx3);cursor:pointer;font-size:14px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s;}
+.p-del:hover{background:rgba(248,81,73,.15);color:var(--err);}
+.p-add{display:flex;gap:6px;padding:8px 14px;}
+.p-add input{flex:1;padding:7px 9px;background:var(--s3);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:12px;font-family:'Noto Sans KR',sans-serif;}
+.p-add input:focus{outline:none;border-color:var(--acc);}
+.p-add button{padding:7px 12px;background:var(--acc);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Noto Sans KR',sans-serif;white-space:nowrap;}
+.sb-stats{padding:8px 14px 14px;font-size:12px;color:var(--tx2);line-height:2;}
+.qb.active{background:var(--acc);color:white;border-color:var(--acc);}
+
+/* ── 메인 ── */
+.main{overflow-y:auto;display:flex;flex-direction:column;}
+.nav-tabs{display:flex;border-bottom:1px solid var(--b1);background:var(--s1);flex-shrink:0;overflow-x:auto;}
+.nt{padding:13px 18px;border:none;background:transparent;color:var(--tx2);cursor:pointer;font-size:13px;font-family:'Noto Sans KR',sans-serif;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.15s;white-space:nowrap;}
+.nt:hover{color:var(--tx);}
+.nt.active{color:var(--acc);border-bottom-color:var(--acc);font-weight:600;}
+
+.tab-pane{display:none;padding:18px;flex:1;}
+.tab-pane.active{display:block;}
+
+/* ── 카드 ── */
+.card{background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:16px;margin-bottom:14px;}
+.ch{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;font-weight:600;color:var(--tx2);}
+.ml{margin-left:auto;}
+
+/* ── 요약 ── */
+.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.sc{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;}
+.sv{font-size:22px;font-weight:700;color:var(--acc);}
+.sl{font-size:11px;color:var(--tx2);margin-top:2px;}
+
+/* ── 필터 ── */
+.fbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fl{font-size:11px;color:var(--tx2);font-weight:600;}
+.fi{padding:7px 10px;background:var(--s3);border:1px solid var(--b1);border-radius:6px;color:var(--tx);font-size:13px;font-family:'Noto Sans KR',sans-serif;}
+.fi:focus{outline:none;border-color:var(--acc);}
+.fa{display:flex;gap:6px;margin-left:auto;align-self:flex-end;}
+.btn{padding:7px 14px;border-radius:6px;border:1px solid var(--b1);background:var(--s3);color:var(--tx2);cursor:pointer;font-size:12px;font-family:'Noto Sans KR',sans-serif;transition:.15s;}
+.btn:hover{border-color:var(--acc);color:var(--acc);}
+.btn.pr{background:var(--acc);color:white;border-color:var(--acc);}
+.btn.pr:hover{opacity:.85;}
+.btn.ok{background:var(--ok);color:#0d1117;border-color:var(--ok);}
+.btn.ok:hover{opacity:.85;}
+.btn.er{background:transparent;border-color:var(--err);color:var(--err);}
+.btn.er:hover{background:rgba(248,81,73,.1);}
+.btn.warn{background:transparent;border-color:var(--warn);color:var(--warn);}
+
+/* ── 테이블 ── */
+.tw{overflow-x:auto;border-radius:var(--r);border:1px solid var(--b1);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{padding:9px 12px;background:var(--s2);color:var(--tx2);font-weight:600;font-size:11px;letter-spacing:.4px;text-align:left;border-bottom:1px solid var(--b1);white-space:nowrap;}
+td{padding:8px 12px;border-bottom:1px solid rgba(48,54,61,.5);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(88,166,255,.025);}
+.tr-editing td{background:rgba(88,166,255,.06)!important;border-bottom:1px solid rgba(88,166,255,.3);}
+
+/* ── 소비기한 인라인 셀 ── */
+.exp-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;}
+.exp-d{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ok);background:rgba(63,185,80,.1);padding:3px 8px;border-radius:5px;white-space:nowrap;min-width:76px;text-align:center;}
+.exp-s{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--acc2);background:rgba(188,140,255,.1);padding:3px 8px;border-radius:5px;min-width:24px;text-align:center;}
+.exp-empty{color:var(--tx3);font-size:12px;background:var(--s3);padding:3px 9px;border-radius:5px;}
+.cp-d{padding:2px 7px;border-radius:4px;border:1px solid rgba(63,185,80,.3);background:transparent;cursor:pointer;font-size:10px;font-family:'Noto Sans KR',sans-serif;color:var(--ok);transition:.15s;white-space:nowrap;}
+.cp-d:hover{background:rgba(63,185,80,.1);}
+
+/* ── 인라인 편집 행 ── */
+.edit-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.ed-txt{padding:5px 8px;background:var(--bg);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:12px;width:100px;}
+.ed-txt:focus{outline:none;border-color:var(--acc);}
+.ed-suf{padding:5px 8px;background:var(--bg);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:12px;font-family:'JetBrains Mono',monospace;width:60px;cursor:pointer;}
+.ed-suf:focus{outline:none;border-color:var(--acc2);}
+.ed-cal{padding:4px 8px;background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx2);cursor:pointer;font-size:11px;font-family:'Noto Sans KR',sans-serif;transition:.15s;white-space:nowrap;}
+.ed-cal:hover{border-color:var(--acc);color:var(--acc);}
+
+/* ── 달력 팝업 (fixed) ── */
+.cal-float{position:fixed;z-index:700;background:var(--s1);border:1px solid var(--b1);border-radius:10px;padding:14px;box-shadow:0 20px 60px rgba(0,0,0,.7);width:264px;display:none;}
+.cal-float.open{display:block;}
+.calf-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cn{background:var(--s3);border:1px solid var(--b1);border-radius:5px;color:var(--tx);cursor:pointer;padding:4px 10px;font-size:15px;line-height:1;transition:.15s;}
+.cn:hover{border-color:var(--acc);}
+.cm{font-weight:600;font-size:14px;}
+.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+.cdn{text-align:center;font-size:10px;color:var(--tx3);padding:3px;font-weight:600;}
+.cd{text-align:center;padding:5px 2px;border-radius:5px;cursor:pointer;font-size:12px;transition:.1s;line-height:1.5;}
+.cd:hover:not(.empty){background:var(--acc);color:white;}
+.cd.sel{background:var(--acc);color:white;font-weight:700;}
+.cd.td:not(.sel){border:1px solid var(--acc);color:var(--acc);}
+.cd.empty{pointer-events:none;}
+.cal-suf-row{margin-top:10px;display:flex;align-items:center;gap:8px;}
+.cal-suf-row span{font-size:11px;color:var(--tx2);}
+.csuf{padding:5px 8px;background:var(--bg);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-size:12px;font-family:'JetBrains Mono',monospace;flex:1;cursor:pointer;}
+.csuf:focus{outline:none;border-color:var(--acc2);}
+.csuf-inp{padding:5px 8px;background:var(--bg);border:1px solid var(--b1);border-radius:5px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:12px;width:50px;}
+.csuf-inp:focus{outline:none;border-color:var(--acc2);}
+.cal-apply{margin-top:8px;width:100%;padding:7px;background:var(--acc);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Noto Sans KR',sans-serif;font-weight:600;}
+
+/* ── 배지 ── */
+.bdg{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;}
+.bdg-ok{background:rgba(63,185,80,.15);color:var(--ok);}
+.bdg-w{background:rgba(210,153,34,.15);color:var(--warn);}
+
+/* ── 대시보드 ── */
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.df{grid-column:1/-1;}
+.br{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.bl{font-size:12px;color:var(--tx2);width:80px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bt{flex:1;height:8px;background:var(--s3);border-radius:4px;overflow:hidden;}
+.bf{height:100%;border-radius:4px;transition:.4s;}
+.bv{font-size:11px;color:var(--tx2);width:36px;text-align:right;flex-shrink:0;}
+.sr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--b1);}
+.sr:last-child{border-bottom:none;}
+.sk{font-size:12px;color:var(--tx2);}
+.sv2{font-size:12px;font-weight:600;}
+
+/* ── 모달 ── */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:800;display:none;align-items:center;justify-content:center;}
+.mo.open{display:flex;}
+.md{background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:24px;max-width:460px;width:90%;box-shadow:0 30px 80px rgba(0,0,0,.6);}
+.mt{font-size:15px;font-weight:700;margin-bottom:10px;}
+.mdesc{color:var(--tx2);font-size:13px;line-height:1.7;margin-bottom:18px;}
+.mac{display:flex;gap:8px;justify-content:flex-end;}
+
+/* ── Supabase 설정 모달 ── */
+.cfg-field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.cfg-label{font-size:12px;color:var(--tx2);font-weight:600;}
+.cfg-input{padding:9px 12px;background:var(--s3);border:1px solid var(--b1);border-radius:var(--r);color:var(--tx);font-size:13px;font-family:'JetBrains Mono',monospace;width:100%;}
+.cfg-input:focus{outline:none;border-color:var(--acc);}
+.cfg-hint{font-size:11px;color:var(--tx3);margin-top:3px;}
+
+/* ── 로그 ── */
+.ll{display:flex;flex-direction:column;gap:6px;max-height:450px;overflow-y:auto;}
+.li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;background:var(--s2);border-radius:6px;border-left:3px solid var(--b1);}
+.li.create{border-left-color:var(--ok);}
+.li.update{border-left-color:var(--warn);}
+.li.delete{border-left-color:var(--err);}
+.lt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx2);white-space:nowrap;flex-shrink:0;}
+.lm{font-size:12px;line-height:1.5;}
+
+/* ── 토스트 ── */
+.tw2{position:fixed;bottom:20px;right:20px;z-index:1000;display:flex;flex-direction:column;gap:6px;}
+.toast{padding:10px 16px;border-radius:8px;font-size:13px;font-family:'Noto Sans KR',sans-serif;animation:tin .25s ease;display:flex;align-items:center;gap:8px;max-width:320px;}
+.toast.ok{background:var(--ok);color:#0d1117;}
+.toast.warn{background:var(--warn);color:#0d1117;}
+.toast.err{background:var(--err);color:white;}
+@keyframes tin{from{transform:translateX(80px);opacity:0}to{transform:none;opacity:1}}
+
+/* ── 업로드 ── */
+.dz{border:2px dashed var(--b1);border-radius:var(--r);padding:28px;text-align:center;cursor:pointer;transition:.2s;}
+.dz:hover,.dz.drag{border-color:var(--acc);background:rgba(88,166,255,.04);}
+.dz .di2{font-size:28px;margin-bottom:6px;}
+
+.es{text-align:center;padding:40px 20px;color:var(--tx2);}
+.ei{font-size:36px;margin-bottom:8px;opacity:.3;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-thumb{background:var(--b1);border-radius:3px;}
+
+@media(max-width:768px){
+  .body{grid-template-columns:1fr;}
+  .sg{grid-template-columns:repeat(2,1fr);}
+  .dg{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- 탑바 -->
+<header class="topbar">
+  <div class="t-logo">📦</div>
+  <h1>출고 소비기한 관리</h1>
+  <span class="t-sub">플랫폼별 · 날짜별 소비기한 이력 시스템</span>
+  <div class="t-right">
+    <span id="dbBadge" class="db-badge db-warn" onclick="openCfg()" title="DB 설정 클릭">⚙ DB 미연결</span>
+    <button id="topSaveBtn" onclick="saveAllToDB()" style="padding:5px 14px;background:var(--ok);color:#0d1117;border:none;border-radius:20px;cursor:pointer;font-size:12px;font-weight:700;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:5px;">💾 전체 저장</button>
+    <span id="syncBadge" style="font-size:11px;color:var(--tx2);display:none;">↻ 동기화 중...</span>
+    <span id="clock"></span>
+  </div>
+</header>
+
+<div class="body">
+<!-- 사이드바 -->
+<aside class="sidebar">
+  <div class="sb-sec">
+    <div class="sb-lbl">📅 출고 날짜</div>
+    <div class="qrow" style="margin-bottom:8px;">
+      <button class="qb active" id="sbModeBtn-single" onclick="setSbDateMode('single')" style="flex:1;font-size:11px;">특정 날짜</button>
+      <button class="qb" id="sbModeBtn-range" onclick="setSbDateMode('range')" style="flex:1;font-size:11px;">기간 조회</button>
+    </div>
+    <div id="sb-single-area">
+      <input type="date" class="di" id="selDate">
+      <div class="qrow" style="margin-top:6px;">
+        <button class="qb" onclick="setRel(-1)">어제</button>
+        <button class="qb" onclick="setRel(0)">오늘</button>
+        <button class="qb" onclick="setRel(1)">내일</button>
+      </div>
+    </div>
+    <div id="sb-range-area" style="display:none;">
+      <div style="font-size:11px;color:var(--tx3);margin-bottom:3px;">시작일</div>
+      <input type="date" class="di" id="sbRangeFrom">
+      <div style="font-size:11px;color:var(--tx3);margin:6px 0 3px;">종료일</div>
+      <input type="date" class="di" id="sbRangeTo">
+      <button class="btn pr" style="width:100%;margin-top:8px;font-size:12px;" onclick="applyFilter()">조회</button>
+    </div>
+  </div>
+  <div class="sb-sec" style="margin-top:14px;"><div class="sb-lbl">🏪 플랫폼</div></div>
+  <div class="plat-list" id="platList"></div>
+  <div class="p-add">
+    <input id="newPlatInp" placeholder="플랫폼명" maxlength="20" onkeydown="if(event.key==='Enter')addPlat()">
+    <button onclick="addPlat()">추가</button>
+  </div>
+  <div class="sb-sec" style="margin-top:4px;"><div class="sb-lbl">📊 현황</div></div>
+  <div class="sb-stats" id="sbStats"></div>
+</aside>
+
+<!-- 메인 -->
+<main class="main">
+  <nav class="nav-tabs">
+    <button class="nt active" onclick="goTab('items',this)">📦 품목 목록</button>
+    <button class="nt" onclick="goTab('upload',this)">📤 엑셀 업로드</button>
+    <button class="nt" onclick="goTab('dashboard',this)">📊 대시보드</button>
+    <button class="nt" onclick="goTab('log',this)">📝 변경 로그</button>
+    <button class="nt" onclick="goTab('settings',this)">⚙️ 설정</button>
+  </nav>
+
+  <!-- ═══ 품목 목록 ═══ -->
+  <div id="tab-items" class="tab-pane active">
+    <div class="sg" id="sumGrid"></div>
+
+    <!-- 필터 -->
+    <div class="fbar">
+      <select id="vmode" style="display:none;"><option value="single">특정 날짜</option><option value="range">기간 조회</option></select>
+      <input type="date" id="fDate" style="display:none;">
+      <input type="date" id="fFrom" style="display:none;">
+      <input type="date" id="fTo" style="display:none;">
+      <div id="fg-single" style="display:none;"></div>
+      <div id="fg-from" style="display:none;"></div>
+      <div id="fg-to" style="display:none;"></div>
+      <select id="fPlat" style="display:none;"><option value="">전체</option></select>
+      <div class="fg"><label class="fl">검색</label>
+        <input type="text" class="fi" id="fSearch" placeholder="품목코드/품목명" style="width:160px;">
+      </div>
+      <div class="fg"><label class="fl">소비기한</label>
+        <select class="fi" id="fExp" style="width:90px;">
+          <option value="">전체</option>
+          <option value="set">등록됨</option>
+          <option value="empty">미등록</option>
+        </select>
+      </div>
+      <div class="fa">
+        <button class="btn pr" onclick="applyFilter()">조회</button>
+        <button class="btn" onclick="resetFilter()">초기화</button>
+      </div>
+    </div>
+
+    <!-- 일괄 소비기한 설정 바 -->
+    <div id="bulkBar" style="display:none;background:var(--s2);border:1px solid rgba(88,166,255,.2);border-radius:var(--r);padding:10px 14px;margin-bottom:12px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="bulkCnt" style="font-size:12px;color:var(--acc);font-weight:600;white-space:nowrap;"></span>
+      <input type="text" id="bulkDate" placeholder="YYYY-MM-DD" maxlength="10" class="ed-txt" style="width:120px;">
+      <select id="bulkSuf" class="ed-suf">
+        <option>A</option><option>B</option><option>C</option><option>D</option>
+        <option>E</option><option>F</option><option>G</option><option>H</option>
+      </select>
+      <button class="btn pr" style="font-size:12px;" onclick="applyBulk()">✅ 일괄 소비기한 적용</button>
+      <button class="btn er" style="font-size:12px;" onclick="bulkDelete()">🗑 선택 삭제</button>
+      <button class="btn" style="font-size:12px;" onclick="clearBulkSel()">✕ 선택 해제</button>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--b1);">
+        <span style="font-size:13px;font-weight:600;color:var(--tx2);">📦 품목 목록</span>
+        <span id="iCntBadge" class="bdg bdg-ok ml">0건</span>
+        <button class="btn pr" style="font-size:11px;padding:4px 10px;" onclick="openManualInput()">✏️ 수기 입력</button>
+        <button class="btn ok" style="font-size:11px;padding:4px 10px;" onclick="saveToDB()">☁️ DB 저장</button>
+        <button class="btn" style="font-size:11px;padding:4px 10px;" onclick="exportItems()">📥 엑셀 저장</button>
+        <button class="btn er" style="font-size:11px;padding:4px 10px;" onclick="deleteAllItems()">🗑 전체 삭제</button>
+      </div>
+      <div id="itemTable"></div>
+    </div>
+  </div>
+
+  <!-- ═══ 엑셀 업로드 ═══ -->
+  <div id="tab-upload" class="tab-pane">
+    <div class="card">
+      <div class="ch">📤 엑셀 파일 업로드</div>
+      <div class="dz" id="dropZone" onclick="$('fileInput').click()">
+        <div class="di2">📊</div>
+        <p><strong style="color:var(--acc);">클릭</strong>하거나 파일을 드래그해서 업로드</p>
+        <p style="margin-top:4px;font-size:11px;color:var(--tx3);">xlsx / xls 지원 · 컬럼: 품목코드, 품목명, 수량</p>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(event)">
+      </div>
+      <div id="upArea" style="display:none;margin-top:16px;">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+          <div class="fg"><label class="fl">플랫폼 지정</label>
+            <select class="fi" id="upPlat" style="min-width:130px;"></select>
+          </div>
+          <div class="fg"><label class="fl">출고 날짜</label>
+            <input type="date" class="fi" id="upDate">
+          </div>
+          <button class="btn ok" onclick="confirmUpload()">✅ 업로드 확정</button>
+          <button class="btn" onclick="cancelUpload()">취소</button>
+        </div>
+        <div id="upPreview"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ch">📋 양식 안내</div>
+      <div style="font-size:13px;color:var(--tx2);line-height:2.2;">
+        A열: <strong style="color:var(--tx)">품목코드</strong>&nbsp;&nbsp;
+        B열: <strong style="color:var(--tx)">품목명</strong>&nbsp;&nbsp;
+        C열: <strong style="color:var(--tx)">수량</strong><br>
+        <span style="font-size:11px;">1행 헤더 있어도 없어도 자동 인식</span>
+      </div>
+      <button class="btn pr" style="margin-top:10px;font-size:12px;" onclick="dlTpl()">📥 양식 다운로드</button>
+    </div>
+  </div>
+
+  <!-- ═══ 대시보드 ═══ -->
+  <div id="tab-dashboard" class="tab-pane">
+    <div class="fbar" style="margin-bottom:14px;">
+      <div class="fg"><label class="fl">시작일</label><input type="date" class="fi" id="dFrom"></div>
+      <div class="fg"><label class="fl">종료일</label><input type="date" class="fi" id="dTo"></div>
+      <div class="fg"><label class="fl">플랫폼</label>
+        <select class="fi" id="dPlat" style="width:110px;"><option value="">전체</option></select>
+      </div>
+      <div class="fa">
+        <button class="btn pr" onclick="refreshDash()">조회</button>
+        <button class="btn" onclick="resetDash()">초기화</button>
+      </div>
+    </div>
+    <div class="sg" id="dSumGrid"></div>
+    <div class="dg">
+      <div class="card"><div class="ch">🏪 플랫폼별 품목 수</div><div id="dPlatBar"></div></div>
+      <div class="card"><div class="ch">🗓 소비기한 등록 현황</div><div id="dExpStat"></div></div>
+      <div class="card df"><div class="ch">📅 날짜별 출고 품목 수 <span style="font-size:10px;color:var(--tx2);font-weight:400;">(최근 14일)</span></div><div id="dDateBar"></div></div>
+      <div class="card"><div class="ch">🚚 출고지별 현황</div><div id="dLocBar"></div></div>
+      <div class="card"><div class="ch">⚡ 최근 변경</div><div id="dRecentLog"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══ 변경 로그 ═══ -->
+  <div id="tab-log" class="tab-pane">
+    <!-- 잠금 화면 -->
+    <div id="logLock" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px;">변경 로그</div>
+      <div style="font-size:13px;color:var(--tx2);margin-bottom:24px;">비밀번호를 입력해야 열람할 수 있습니다</div>
+      <button class="btn pr" style="padding:10px 28px;font-size:14px;" onclick="unlockLog()">🔓 비밀번호 입력</button>
+    </div>
+    <!-- 로그 내용 (잠금 해제 후 표시) -->
+    <div id="logContent" style="display:none;">
+      <div class="card">
+        <div class="ch">
+          📝 소비기한 변경 로그
+          <div class="ml" style="display:flex;gap:6px;">
+            <input type="text" class="fi" id="logQ" placeholder="검색..." style="width:140px;padding:5px 8px;font-size:12px;" oninput="renderLog()">
+            <button class="btn" style="font-size:11px;padding:5px 10px;" onclick="exportLog()">엑셀</button>
+            <button class="btn er" style="font-size:11px;padding:5px 10px;" onclick="reqClearLog()">초기화</button>
+            <button class="btn warn" style="font-size:11px;padding:5px 10px;" onclick="lockLog()">🔒 잠금</button>
+          </div>
+        </div>
+        <div class="ll" id="logList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 설정 ═══ -->
+  <div id="tab-settings" class="tab-pane">
+    <div style="max-width:700px;">
+
+      <!-- 플랫폼 관리 -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="ch">🏪 플랫폼 관리</div>
+        <div id="settingsPlatList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="settingsNewPlat" class="fi" placeholder="새 플랫폼명" maxlength="20" style="flex:1;" onkeydown="if(event.key==='Enter')settingsAddPlat()">
+          <button class="btn pr" onclick="settingsAddPlat()">+ 추가</button>
+        </div>
+      </div>
+
+      <!-- 출고지 관리 -->
+      <div class="card">
+        <div class="ch">🚚 출고지 관리
+          <select id="settingsPlatSel" class="fi ml" style="width:140px;font-size:12px;" onchange="renderSettingsLocations()">
+            <option value="">플랫폼 선택...</option>
+          </select>
+        </div>
+        <div id="settingsLocList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+          <div style="color:var(--tx3);font-size:12px;padding:12px 0;">위에서 플랫폼을 선택해주세요</div>
+        </div>
+        <div id="settingsLocAdd" style="display:none;gap:8px;align-items:center;">
+          <input id="settingsNewLoc" class="fi" placeholder="출고지명 (예: 창원상온)" maxlength="30" style="flex:1;" onkeydown="if(event.key==='Enter')settingsAddLoc()">
+          <button class="btn pr" onclick="settingsAddLoc()">+ 추가</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+</div>
+</div>
+
+<!-- 수기 입력 모달 -->
+<div class="mo" id="manualMo">
+  <div class="md" style="max-width:600px;width:95%;">
+    <div class="mt">✏️ 품목 수기 입력</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div class="cfg-field">
+        <label class="fl" style="margin-bottom:5px;display:block;">플랫폼</label>
+        <select class="cfg-input" id="manPlat" style="width:100%;" onchange="updateManLocDropdown()"></select>
+      </div>
+      <div class="cfg-field">
+        <label class="fl" style="margin-bottom:5px;display:block;">출고 날짜</label>
+        <input class="cfg-input" type="date" id="manDate">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div class="cfg-field">
+        <label class="fl" style="margin-bottom:5px;display:block;">품목코드</label>
+        <input class="cfg-input" type="text" id="manCode" placeholder="품목코드 (선택)">
+      </div>
+      <div class="cfg-field">
+        <label class="fl" style="margin-bottom:5px;display:block;">품목명 <span style="color:var(--err);">*</span></label>
+        <input class="cfg-input" type="text" id="manName" placeholder="품목명 입력">
+      </div>
+    </div>
+    <div class="cfg-field" style="margin-bottom:10px;">
+      <label class="fl" style="margin-bottom:5px;display:block;">총 수량 <span style="color:var(--err);">*</span></label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input class="cfg-input" type="number" id="manQty" placeholder="총 수량" min="1" style="flex:1;" oninput="updateSplitRemain()">
+        <label class="fl" style="white-space:nowrap;margin:0;">분할 개수</label>
+        <select class="cfg-input" id="manSplitCnt" style="width:70px;" onchange="renderSplitRows()">
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option>
+        </select>
+      </div>
+    </div>
+    <!-- 분할 입력 영역 -->
+    <div id="splitRowsWrap" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:280px;overflow-y:auto;"></div>
+    <div id="splitRemainWrap" style="font-size:12px;color:var(--warn);margin-bottom:10px;display:none;">
+      ⚠️ 잔여 수량: <strong id="splitRemain">0</strong>
+    </div>
+    <div class="mac">
+      <button class="btn" onclick="closeMo('manualMo')">취소</button>
+      <button class="btn pr" onclick="saveManualItem()">✅ 추가</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- 품목 분할 모달 -->
+<div class="mo" id="splitMo">
+  <div class="md" style="max-width:620px;width:95%;">
+    <div class="mt">🔀 품목 수량 분할</div>
+    <!-- 원본 품목 정보 -->
+    <div id="splitOriginInfo" style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;gap:16px;flex-wrap:wrap;">
+    </div>
+    <!-- 분할 개수 설정 -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <label class="fl" style="white-space:nowrap;">분할 개수</label>
+      <select class="fi" id="splitMoCnt" style="width:80px;" onchange="renderSplitMoRows()">
+        <option value="2">2</option><option value="3">3</option>
+        <option value="4">4</option><option value="5">5</option>
+      </select>
+      <span id="splitMoRemainBadge" style="font-size:12px;margin-left:auto;"></span>
+    </div>
+    <!-- 분할 행 -->
+    <div id="splitMoRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:320px;overflow-y:auto;"></div>
+    <!-- 경고 -->
+    <div id="splitMoWarn" style="display:none;color:var(--warn);font-size:12px;margin-bottom:10px;padding:6px 10px;background:rgba(210,153,34,.08);border-radius:6px;border:1px solid rgba(210,153,34,.2);"></div>
+    <div class="mac">
+      <button class="btn" onclick="closeMo('splitMo')">취소</button>
+      <button class="btn pr" onclick="confirmSplit()">✅ 분할 확정</button>
+    </div>
+  </div>
+</div>
+
+<!-- 비밀번호 모달 -->
+<div class="mo" id="pwMo">
+  <div class="md" style="max-width:360px;">
+    <div class="mt">🔒 비밀번호 확인</div>
+    <div class="mdesc">변경 로그 접근을 위해 비밀번호를 입력해주세요.</div>
+    <div class="cfg-field">
+      <input class="cfg-input" type="password" id="pwInput" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')checkPw()">
+    </div>
+    <div id="pwErr" style="color:var(--err);font-size:12px;margin-top:-6px;margin-bottom:10px;display:none;">❌ 비밀번호가 틀렸습니다</div>
+    <div class="mac">
+      <button class="btn" onclick="closeMo('pwMo');pwReject&&pwReject()">취소</button>
+      <button class="btn pr" onclick="checkPw()">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 변경 확인 모달 -->
+<div class="mo" id="chgMo">
+  <div class="md">
+    <div class="mt">⚠️ 소비기한 변경 확인</div>
+    <div class="mdesc" id="chgDesc"></div>
+    <div class="mac">
+      <button class="btn" onclick="closeMo('chgMo')">취소</button>
+      <button class="btn pr" onclick="doConfirm()">변경 확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 품목 편집 모달 -->
+<div class="mo" id="editMo">
+  <div class="md">
+    <div class="mt">✏️ 품목 수정</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">
+      <div class="cfg-field">
+        <label class="cfg-label">품목코드</label>
+        <input class="cfg-input" id="editCode" placeholder="품목코드">
+      </div>
+      <div class="cfg-field">
+        <label class="cfg-label">품목명</label>
+        <input class="cfg-input" id="editName" placeholder="품목명">
+      </div>
+      <div class="cfg-field">
+        <label class="cfg-label">수량</label>
+        <input class="cfg-input" id="editQty" type="number" placeholder="수량">
+      </div>
+    </div>
+    <div class="mac">
+      <button class="btn" onclick="closeMo('editMo')">취소</button>
+      <button class="btn ok" onclick="saveEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Supabase 설정 모달 -->
+<div class="mo" id="cfgMo">
+  <div class="md" style="max-width:520px;">
+    <div class="mt">⚙️ Supabase DB 연결 설정</div>
+    <div style="background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.15);border-radius:var(--r);padding:12px;margin-bottom:16px;font-size:12px;color:var(--tx2);line-height:1.8;">
+      📌 <strong style="color:var(--acc)">Supabase</strong>를 연결하면 여러 컴퓨터에서 <strong style="color:var(--tx)">실시간으로 같은 데이터</strong>를 볼 수 있습니다.<br>
+      무료 계정: <a href="https://supabase.com" target="_blank" style="color:var(--acc)">supabase.com</a> 에서 생성 후 아래 정보를 입력하세요.
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label">Project URL</label>
+      <input class="cfg-input" id="cfgUrl" placeholder="https://xxxxxxxxxxxx.supabase.co">
+      <div class="cfg-hint">Settings → API → Project URL</div>
+    </div>
+    <div class="cfg-field">
+      <label class="cfg-label">anon public key</label>
+      <input class="cfg-input" id="cfgKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+      <div class="cfg-hint">Settings → API → Project API Keys → anon public</div>
+    </div>
+    <div style="background:rgba(63,185,80,.06);border:1px solid rgba(63,185,80,.15);border-radius:var(--r);padding:10px 12px;margin-bottom:16px;font-size:11px;color:var(--tx2);line-height:1.9;">
+      📋 Supabase SQL Editor에서 아래 테이블을 생성해주세요:<br>
+      <code style="color:var(--ok);font-family:'JetBrains Mono',monospace;font-size:11px;">
+      create table items (id bigserial primary key, platform text, ship_date text, code text, name text, qty int, expiry text, suffix text, location text default '', updated_at timestamptz default now());<br>
+      create table platforms (id bigserial primary key, name text unique, color text);<br>
+      create table logs (id bigserial primary key, type text, msg text, created_at timestamptz default now());
+      </code>
+    </div>
+    <div class="mac">
+      <button class="btn" onclick="closeMo('cfgMo')">취소</button>
+      <button class="btn warn" onclick="useLsOnly()">로컬만 사용</button>
+      <button class="btn pr" onclick="connectDB()">연결 테스트 & 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 달력 팝업 (floating) -->
+<div class="cal-float" id="calFloat">
+  <div class="calf-h">
+    <button class="cn" onclick="calNav(-1)">‹</button>
+    <span class="cm" id="calFM"></span>
+    <button class="cn" onclick="calNav(1)">›</button>
+  </div>
+  <div class="cg" id="calFG"></div>
+  <div class="cal-suf-row">
+    <span>구분코드</span>
+    <select class="csuf" id="calSuf">
+      <option>A</option><option>B</option><option>C</option><option>D</option>
+      <option>E</option><option>F</option><option>G</option><option>H</option>
+    </select>
+    <input class="csuf-inp" id="calSufDirect" placeholder="직접" maxlength="3" oninput="this.value=this.value.toUpperCase()">
+  </div>
+  <button class="cal-apply" onclick="applyCalFloat()">적용</button>
+</div>
+
+<div class="tw2" id="toastWrap"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+const DPLATS=['쿠팡','네이버','오프라인','GS25','CU'];
+const DCOLS={'쿠팡':'#58a6ff','네이버':'#3fb950','오프라인':'#d29922','GS25':'#bc8cff','CU':'#f85149'};
+const CPOOL=['#58a6ff','#3fb950','#d29922','#bc8cff','#f85149','#38bdf8','#fb7185','#a3e635'];
+
+let G={
+  plats:[...DPLATS], cols:{...DCOLS},
+  sel:'', date:'', data:{}, logs:[], pending:null,
+  editTarget:null,
+  editingPlat:null,
+  locations:{},
+  db:{url:'',key:'',connected:false,mode:'local'} // mode: 'local' | 'supabase'
+};
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+const $=id=>document.getElementById(id);
+const pad=n=>String(n).padStart(2,'0');
+const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;};
+const toYMD=s=>s?s.replace(/-/g,''):'';
+const toDisplay=s=>{
+  // YYYYMMDD → YYYY-MM-DD
+  if(!s) return '';
+  const c=s.replace(/-/g,'');
+  if(c.length===8) return c.slice(0,4)+'-'+c.slice(4,6)+'-'+c.slice(6,8);
+  return s;
+};
+const toStorage=s=>{
+  // YYYY-MM-DD or YYYYMMDD → YYYY-MM-DD (저장 형식 통일)
+  if(!s) return '';
+  const c=s.replace(/-/g,'');
+  if(c.length===8) return c.slice(0,4)+'-'+c.slice(4,6)+'-'+c.slice(6,8);
+  return s;
+};
+const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const nowStr=()=>new Date().toLocaleString('ko-KR',{hour12:false});
+const key=(p,d)=>`${p}||${d}`;
+const getItems=(p,d)=>G.data[key(p,d)]||[];
+const setItems=(p,d,arr)=>{G.data[key(p,d)]=arr;};
+// 변경 즉시 DB에 해당 키 전체 저장
+async function pushKeyToDB(p,d){
+  if(G.db.mode!=='supabase') return;
+  const items=getItems(p,d);
+  try{ for(const it of items) await dbSaveItem(p,d,it); }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  PERSIST (localStorage)
+// ══════════════════════════════════════════
+function save(){
+  try{
+    localStorage.setItem('exp_v4',JSON.stringify({
+      plats:G.plats, cols:G.cols, sel:G.sel, date:G.date,
+      data:G.data, logs:G.logs, locations:G.locations
+      // db 키는 저장하지 않음 - 항상 코드에 하드코딩된 값 사용
+    }));
+  }catch(e){}
+}
+function load(){
+  try{
+    const r=localStorage.getItem('exp_v4'); if(!r)return;
+    const d=JSON.parse(r);
+    G.plats=d.plats||[...DPLATS]; G.cols=d.cols||{...DCOLS};
+    G.sel=d.sel!==undefined?d.sel:G.plats[0]; G.date=d.date||'';
+    G.data=d.data||{}; G.logs=d.logs||[]; G.locations=d.locations||{};
+    // ※ db 키는 localStorage에서 불러오지 않음 - 항상 하드코딩 값 사용
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+//  SUPABASE DB (공식 JS 라이브러리)
+// ══════════════════════════════════════════
+let _sb=null;
+function getSB(){
+  if(!_sb) _sb=supabase.createClient(G.db.url, G.db.key);
+  return _sb;
+}
+
+async function connectDB(){
+  const url=$('cfgUrl').value.trim().replace(/\/$/,'');
+  const key=$('cfgKey').value.trim();
+  if(!url||!key){toast('URL과 Key를 입력해주세요','warn');return;}
+  try{
+    setSyncBadge(true);
+    _sb=null; // 클라이언트 초기화
+    G.db.url=url; G.db.key=key; G.db.mode='supabase';
+    const {data,error}=await getSB().from('platforms').select('name').limit(1);
+    if(error) throw new Error(error.message);
+    G.db.connected=true;
+    save(); closeMo('cfgMo'); updateDbBadge();
+    toast('Supabase 연결 성공! 데이터 동기화 중...','ok');
+    await syncFromDB();
+  }catch(e){
+    toast('연결 실패: '+e.message,'err');
+  }finally{setSyncBadge(false);}
+}
+function useLsOnly(){G.db.mode='local';G.db.connected=false;save();updateDbBadge();closeMo('cfgMo');toast('로컬 저장 모드로 설정됨','warn');}
+function updateDbBadge(){
+  const b=$('dbBadge');
+  if(G.db.mode==='supabase'&&G.db.connected){b.className='db-badge db-ok';b.textContent='🟢 DB 연결됨';}
+  else if(G.db.mode==='local'){b.className='db-badge db-warn';b.textContent='💾 로컬 저장';}
+  else{b.className='db-badge db-err';b.textContent='⚙ DB 미연결';}
+}
+function setSyncBadge(on){$('syncBadge').style.display=on?'':'none';}
+function openCfg(){$('cfgUrl').value=G.db.url;$('cfgKey').value=G.db.key;$('cfgMo').classList.add('open');}
+
+// DB 전체 불러오기
+async function syncFromDB(){
+  if(G.db.mode!=='supabase') return;
+  console.log('syncFromDB 시작, key앞20:', G.db.key?G.db.key.slice(0,20):'없음');
+  setSyncBadge(true);
+  try{
+    // ── 플랫폼 불러오기
+    const {data:plats,error:pe}=await getSB().from('platforms').select('name,color').order('id');
+    if(pe) throw new Error(pe.message);
+    if(plats.length){
+      // DB에 플랫폼 있으면 DB 기준으로 덮어씀
+      G.plats=plats.map(p=>p.name);
+      G.cols={};plats.forEach(p=>{G.cols[p.name]=p.color;});
+      if(G.sel!==''&&!G.plats.includes(G.sel)) G.sel='';
+    } else {
+      // DB에 플랫폼 없으면 → 로컬 플랫폼을 DB에 업로드
+      for(const p of G.plats){
+        await dbSavePlat(p, G.cols[p]||'#58a6ff');
+      }
+    }
+
+    // ── 아이템 불러오기
+    const {data:items,error:ie}=await getSB().from('items').select('*').order('id');
+    if(ie) throw new Error(ie.message);
+    if(items.length){
+      // DB에 아이템 있으면 DB 기준으로 덮어씀
+      G.data={};
+      items.forEach(it=>{
+        const k=key(it.platform,it.ship_date);
+        if(!G.data[k])G.data[k]=[];
+        G.data[k].push({id:it.id,code:it.code,name:it.name,qty:it.qty,expiry:(it.expiry||'')+(it.suffix||''),location:it.location||''});
+      });
+    } else {
+      // DB에 아이템 없고 로컬에 있으면 → 로컬 데이터를 DB에 업로드
+      const localKeys=Object.keys(G.data).filter(k=>G.data[k]&&G.data[k].length>0);
+      if(localKeys.length){
+        for(const k of localKeys){
+          const[p,d]=k.split('||');
+          for(const it of G.data[k]) await dbSaveItem(p,d,it);
+        }
+        toast('로컬 데이터를 DB에 업로드했습니다!','ok');
+      }
+    }
+
+    // ── 로그 불러오기
+    const {data:logs,error:le}=await getSB().from('logs').select('*').order('id',{ascending:false}).limit(200);
+    if(le) throw new Error(le.message);
+    if(logs.length){
+      G.logs=logs.map(l=>({type:l.type,msg:l.msg,time:new Date(l.created_at).toLocaleString('ko-KR',{hour12:false})}));
+    }
+
+    save(); renderPlats(); refresh(); renderLog();
+    updateDbBadge();
+  }catch(e){
+    // RLS 정책 오류일 가능성 있음 → 안내 메시지
+    if(e.message.includes('401')||e.message.includes('403')||e.message.includes('42501')){
+      toast('DB 권한 오류! Supabase RLS를 비활성화해주세요','err');
+      showRlsGuide();
+    } else {
+      toast('동기화 오류: '+e.message,'err');
+    }
+  }
+  finally{setSyncBadge(false);}
+}
+
+// RLS 비활성화 안내
+function showRlsGuide(){
+  if($('rlsGuide')) return;
+  const div=document.createElement('div');
+  div.id='rlsGuide';
+  div.style.cssText='position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:900;background:#1c2128;border:1px solid #f85149;border-radius:10px;padding:16px 20px;max-width:500px;font-size:13px;color:#e6edf3;line-height:2;box-shadow:0 10px 40px rgba(0,0,0,.6);';
+  div.innerHTML=`<div style="font-weight:700;color:#f85149;margin-bottom:6px;">⚠️ DB 권한 오류 - RLS 설정 필요</div>
+  아래 링크에서 SQL을 실행해주세요:<br>
+  <a href="https://supabase.com/dashboard/project/flevmhcogrwagyoxcacs/sql/new" target="_blank" style="color:#58a6ff;">Supabase SQL Editor 열기 →</a><br><br>
+  <code style="background:#0d1117;padding:8px;border-radius:5px;display:block;font-size:11px;color:#3fb950;">
+  alter table platforms disable row level security;<br>
+  alter table items disable row level security;<br>
+  alter table logs disable row level security;
+  </code>
+  <button onclick="this.parentNode.remove()" style="margin-top:10px;padding:5px 14px;background:#58a6ff;color:white;border:none;border-radius:5px;cursor:pointer;font-size:12px;">닫기</button>`;
+  document.body.appendChild(div);
+}
+
+// DB 저장 헬퍼
+async function dbSaveItem(plat,date,it){
+  if(G.db.mode!=='supabase') return;
+  const expDate=it.expiry?it.expiry.slice(0,-1):'';
+  const expSuf=it.expiry?it.expiry.slice(-1):'';
+  if(it.id){
+    const {error}=await getSB().from('items').update({code:it.code,name:it.name,qty:it.qty,expiry:expDate,suffix:expSuf,location:it.location||'',updated_at:new Date().toISOString()}).eq('id',it.id);
+    if(error) throw new Error(error.message);
+  }else{
+    const {data,error}=await getSB().from('items').insert({platform:plat,ship_date:date,code:it.code,name:it.name,qty:it.qty,expiry:expDate,suffix:expSuf,location:it.location||''}).select();
+    if(error) throw new Error(error.message);
+    if(data&&data[0]) it.id=data[0].id;
+  }
+}
+async function dbDeleteItem(id){
+  if(G.db.mode!=='supabase'||!id) return;
+  const {error}=await getSB().from('items').delete().eq('id',id);
+  if(error) throw new Error(error.message);
+}
+async function dbSavePlat(name,color){
+  if(G.db.mode!=='supabase') return;
+  const {error}=await getSB().from('platforms').upsert({name,color},{onConflict:'name'});
+  if(error) throw new Error(error.message);
+}
+async function dbDeletePlat(name){
+  if(G.db.mode!=='supabase') return;
+  await getSB().from('platforms').delete().eq('name',name);
+  await getSB().from('items').delete().eq('platform',name);
+}
+async function dbSaveLog(type,msg){
+  if(G.db.mode!=='supabase') return;
+  await getSB().from('logs').insert({type,msg});
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+function init(){
+  load();
+  if(!G.date) G.date=todayStr();
+  $('selDate').value=G.date;
+  $('selDate').addEventListener('change',e=>{G.date=e.target.value;save();refresh();});
+  $('fDate').value=G.date;
+  $('upDate').value=G.date;
+  setupDrop();
+  document.addEventListener('click',e=>{
+    const cf=$('calFloat');
+    // 달력 내부 클릭이거나 달력 열기 버튼 클릭이면 닫지 않음
+    if(cf&&cf.classList.contains('open')){
+      if(!cf.contains(e.target)&&!e.target.closest('.ed-cal')&&!e.target.closest('.cal-float')){
+        closeCalFloat();
+      }
+    }
+  });
+  // Supabase 자동 연결
+  // 항상 Supabase 키 강제 적용 (localStorage 값 무시)
+  G.db.url='https://flevmhcogrwagyoxcacs.supabase.co';
+  G.db.key='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsZXZtaGNvZ3J3YWd5b3hjYWNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNDk5ODAsImV4cCI6MjA4NzkyNTk4MH0.eWvh1kjdnG-juv77MMbnmnRSWa22eFP0sZn9r4wHsYg';
+  G.db.mode='supabase';
+  _sb=null; // 클라이언트 재초기화
+  console.log('init 키설정:', G.db.key.slice(0,20));
+  updateDbBadge();
+  renderPlats(); refresh(); renderLog();
+  setInterval(()=>{$('clock').textContent=new Date().toLocaleString('ko-KR',{hour12:false});},1000);
+  if(G.db.mode==='supabase'&&G.db.url&&G.db.key){
+    G.db.connected=true; updateDbBadge();
+    syncFromDB();
+    setInterval(()=>syncFromDB(),30000);
+  }
+}
+
+// ══════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════
+function goTab(tab,btn){
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nt').forEach(b=>b.classList.remove('active'));
+  $('tab-'+tab).classList.add('active'); btn.classList.add('active');
+  if(tab==='dashboard') refreshDash();
+  if(tab==='log'&&!logUnlocked){ $('logLock').style.display='flex'; $('logContent').style.display='none'; }
+  if(tab==='settings') renderSettingsTab();
+}
+
+// ══════════════════════════════════════════
+//  PLATFORM
+// ══════════════════════════════════════════
+function renderPlats(){
+  const list=$('platList'); list.innerHTML='';
+  ['fPlat','dPlat','upPlat'].forEach(id=>{
+    const el=$(id); if(!el) return;
+    const cur=el.value;
+    el.innerHTML='<option value="">전체</option>';
+    G.plats.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(p===cur)o.selected=true;el.appendChild(o);});
+  });
+
+  // ── "전체" 버튼 (최상단)
+  const allRow=document.createElement('div'); allRow.className='plat-row';
+  const allBtn=document.createElement('button'); allBtn.className='pb'+(G.sel===''?' active':'');
+  allBtn.innerHTML=`<span class="p-dot" style="background:var(--tx2)"></span><span class="p-name">전체</span><span class="p-cnt">${G.plats.reduce((s,p)=>s+getItems(p,G.date).length,0)}</span>`;
+  allBtn.onclick=()=>{
+    G.sel='';
+    const fp=$('fPlat'); if(fp) fp.value='';
+    save();renderPlats();refresh();
+  };
+  allRow.appendChild(allBtn); list.appendChild(allRow);
+
+  G.plats.forEach(p=>{
+    const cnt=getItems(p,G.date).length;
+    const col=G.cols[p]||CPOOL[0];
+    const row=document.createElement('div'); row.className='plat-row';
+
+    // 편집 모드 여부
+    if(G.editingPlat===p){
+      const inp=document.createElement('input');
+      inp.value=p; inp.className='pb'; inp.style.cssText='flex:1;padding:6px 10px;font-size:13px;background:var(--s3);border:1px solid var(--acc);border-radius:var(--r);color:var(--tx);outline:none;';
+      inp.onkeydown=e=>{
+        if(e.key==='Enter'){e.preventDefault();savePlatName(p,inp.value.trim());}
+        if(e.key==='Escape'){G.editingPlat=null;renderPlats();}
+      };
+      const saveBtn=document.createElement('button'); saveBtn.className='p-del'; saveBtn.title='저장'; saveBtn.innerHTML='✓';
+      saveBtn.style.cssText='color:var(--ok);width:26px;height:26px;font-size:14px;';
+      saveBtn.onclick=e=>{e.stopPropagation();savePlatName(p,inp.value.trim());};
+      const cancelBtn=document.createElement('button'); cancelBtn.className='p-del'; cancelBtn.title='취소'; cancelBtn.innerHTML='✕';
+      cancelBtn.onclick=e=>{e.stopPropagation();G.editingPlat=null;renderPlats();};
+      row.appendChild(inp); row.appendChild(saveBtn); row.appendChild(cancelBtn);
+      list.appendChild(row);
+      setTimeout(()=>inp.focus(),50);
+      return;
+    }
+
+    const btn=document.createElement('button'); btn.className='pb'+(p===G.sel?' active':'');
+    btn.innerHTML=`<span class="p-dot" style="background:${col}"></span><span class="p-name">${esc(p)}</span><span class="p-cnt">${cnt}</span>`;
+    btn.onclick=()=>{
+      G.sel=p;
+      const fp=$('fPlat'); if(fp) fp.value=p;
+      save();renderPlats();refresh();
+    };
+    const edit=document.createElement('button'); edit.className='p-del'; edit.title='이름 수정'; edit.innerHTML='✎';
+    edit.style.cssText='color:var(--acc);font-size:13px;';
+    edit.onclick=e=>{e.stopPropagation();G.editingPlat=p;renderPlats();};
+    const del=document.createElement('button'); del.className='p-del'; del.title='삭제'; del.innerHTML='×';
+    del.onclick=e=>{e.stopPropagation();delPlatWithPw(p);};
+    row.appendChild(btn); row.appendChild(edit); row.appendChild(del); list.appendChild(row);
+  });
+}
+
+async function savePlatName(oldName, newName){
+  if(!newName){toast('이름을 입력해주세요','warn');return;}
+  if(newName===oldName){G.editingPlat=null;renderPlats();return;}
+  if(G.plats.includes(newName)){toast('이미 존재하는 이름입니다','warn');return;}
+  // 로컬 데이터 키 변경
+  const idx=G.plats.indexOf(oldName);
+  G.plats[idx]=newName;
+  G.cols[newName]=G.cols[oldName]; delete G.cols[oldName];
+  // data 키 변경
+  const newData={};
+  Object.keys(G.data).forEach(k=>{
+    if(k.startsWith(oldName+'||')) newData[newName+'||'+k.slice(oldName.length+2)]=G.data[k];
+    else newData[k]=G.data[k];
+  });
+  G.data=newData;
+  if(G.sel===oldName) G.sel=newName;
+  G.editingPlat=null;
+  // DB 업데이트
+  if(G.db.mode==='supabase'){
+    try{
+      await getSB().from('platforms').update({name:newName}).eq('name',oldName);
+      await getSB().from('items').update({platform:newName}).eq('platform',oldName);
+    }catch(e){toast('DB 업데이트 오류: '+e.message,'err');}
+  }
+  save(); renderPlats(); refresh();
+  toast(`'${oldName}' → '${newName}' 변경됨`,'ok');
+}
+async function addPlat(){
+  const inp=$('newPlatInp'), name=inp.value.trim();
+  if(!name) return;
+  if(G.plats.includes(name)){toast('이미 존재합니다','warn');return;}
+  const col=CPOOL[G.plats.length%CPOOL.length];
+  G.cols[name]=col; G.plats.push(name); inp.value=''; G.sel=name;
+  save(); renderPlats(); refresh();
+  await dbSavePlat(name,col);
+  toast(`'${name}' 추가됨`,'ok');
+}
+async function delPlatWithPw(p){
+  try{ await requirePw(); }catch(e){return;}
+  await delPlat(p);
+}
+async function delPlat(p){
+  if(G.plats.length<=1){toast('최소 1개 유지','warn');return;}
+  if(!confirm(`'${p}' 플랫폼과 모든 데이터를 삭제하시겠습니까?`)) return;
+  Object.keys(G.data).forEach(k=>{if(k.startsWith(p+'||'))delete G.data[k];});
+  G.plats=G.plats.filter(x=>x!==p);
+  if(G.sel===p) G.sel=G.plats[0];
+  save(); renderPlats(); refresh();
+  await dbDeletePlat(p);
+  toast(`'${p}' 삭제됨`,'warn');
+}
+function setRel(d){
+  const dt=new Date(Date.now()+d*86400000);
+  const s=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+  G.date=s; $('selDate').value=s; save(); refresh();
+}
+
+// ══════════════════════════════════════════
+//  REFRESH
+// ══════════════════════════════════════════
+function refresh(){
+  // G.sel==='' 이면 전체 플랫폼 합산
+  let items=[];
+  if(!G.sel){
+    G.plats.forEach(p=>items=items.concat(getItems(p,G.date)));
+  } else {
+    items=getItems(G.sel,G.date);
+  }
+  const qty=items.reduce((s,i)=>s+(+i.qty||0),0);
+  const we=items.filter(i=>i.expiry).length;
+  $('sumGrid').innerHTML=`
+    <div class="sc"><div class="sv">${items.length}</div><div class="sl">품목 수</div></div>
+    <div class="sc"><div class="sv">${qty.toLocaleString()}</div><div class="sl">총 수량</div></div>
+    <div class="sc"><div class="sv" style="color:var(--ok)">${we}</div><div class="sl">소비기한 등록</div></div>
+    <div class="sc"><div class="sv" style="color:var(--warn)">${items.length-we}</div><div class="sl">미등록</div></div>`;
+  renderItemTable(getFilteredItems());
+  renderSbStats();
+  renderPlats();
+}
+
+function renderSbStats(){
+  let html='';
+  G.plats.forEach(p=>{
+    const it=getItems(p,G.date);
+    if(it.length){const w=it.filter(i=>i.expiry).length;
+      html+=`<div>${p}: ${it.length}건 <span style="color:var(--ok)">(${w})</span></div>`;}
+  });
+  $('sbStats').innerHTML=html||'<div style="color:var(--tx3)">데이터 없음</div>';
+}
+
+// ══════════════════════════════════════════
+//  FILTER
+// ══════════════════════════════════════════
+function setSbDateMode(mode){
+  const isSingle = mode==='single';
+  $('sb-single-area').style.display = isSingle?'':'none';
+  $('sb-range-area').style.display  = isSingle?'none':'';
+  $('sbModeBtn-single').classList.toggle('active', isSingle);
+  $('sbModeBtn-range').classList.toggle('active', !isSingle);
+  // hidden input 동기화
+  const vm=$('vmode'); if(vm) vm.value=mode;
+  applyFilter();
+}
+
+function toggleVMode(){
+  const m=$('vmode').value;
+  $('fg-single').style.display=m==='single'?'':'none';
+  $('fg-from').style.display=m==='range'?'':'none';
+  $('fg-to').style.display=m==='range'?'':'none';
+}
+function getFilteredItems(){
+  const vm=$('vmode'); const mode=vm?vm.value:'single'; const plat=$('fPlat').value;
+  const search=($('fSearch')?.value||'').trim().toLowerCase();
+  const expSt=($('fExp')?.value)||'';
+  let rows=[];
+  if(mode==='single'){
+    const d=$('selDate').value||G.date;  // 왼쪽 날짜 사용
+    const plats=plat?[plat]:G.plats;
+    plats.forEach(p=>getItems(p,d).forEach((it,i)=>rows.push({...it,_p:p,_d:d,_i:i})));
+  }else{
+    const from=$('sbRangeFrom').value||$('fFrom').value;
+    const to=$('sbRangeTo').value||$('fTo').value;
+    if(!from||!to){toast('기간을 선택해주세요','warn');return [];} 
+    const plats=plat?[plat]:G.plats;
+    Object.keys(G.data).forEach(k=>{
+      const[kp,kd]=k.split('||');
+      if(!plats.includes(kp)||kd<from||kd>to) return;
+      G.data[k].forEach((it,i)=>rows.push({...it,_p:kp,_d:kd,_i:i}));
+    });
+  }
+  if(search) rows=rows.filter(r=>r.code?.toLowerCase().includes(search)||r.name?.toLowerCase().includes(search));
+  if(expSt==='set') rows=rows.filter(r=>r.expiry);
+  if(expSt==='empty') rows=rows.filter(r=>!r.expiry);
+  return rows;
+}
+function applyFilter(){renderItemTable(getFilteredItems());}
+function resetFilter(){
+  $('fDate').value=G.date;$('fFrom').value='';$('fTo').value='';
+  $('fPlat').value='';$('fSearch').value='';$('fExp').value='';
+  $('vmode').value='single'; toggleVMode(); applyFilter();
+}
+
+// ══════════════════════════════════════════
+//  ITEM TABLE
+// ══════════════════════════════════════════
+let _lastRows=[];
+function renderItemTable(rows){
+  _lastRows=rows;
+  $('iCntBadge').textContent=rows.length+'건';
+  const wrap=$('itemTable');
+  if(!rows.length){wrap.innerHTML='<div class="es"><div class="ei">📂</div>품목이 없습니다. 엑셀 업로드 탭에서 업로드해주세요.</div>';return;}
+
+  const multiP=$('vmode').value==='range'||$('fPlat').value===''&&$('vmode').value==='single'&&G.plats.length>1&&$('fPlat').value==='';
+  const showPlat=($('fPlat').value===''&&rows.some(r=>r._p!==rows[0]._p));
+  const showDate=($('vmode').value==='range');
+
+  wrap.innerHTML=`<div class="tw"><table>
+    <thead><tr>
+      <th><input type="checkbox" onchange="selAllRows(this)"></th>
+      <th>#</th>
+      ${showPlat?'<th>플랫폼</th>':''}
+      ${showDate?'<th>날짜</th>':''}
+      <th>출고지</th><th>품목코드</th><th>품목명</th><th style="text-align:right">수량</th>
+      <th>소비기한</th><th>구분코드</th>
+      <th>날짜복사</th><th>관리</th>
+    </tr></thead>
+    <tbody id="itemTbody">
+    ${rows.map((r,ri)=>{
+      const ed=r.expiry?r.expiry.slice(0,-1):'';
+      const es=r.expiry?r.expiry.slice(-1):'';
+      return `<tr id="tr_${ri}">
+        <td><input type="checkbox" class="rc" data-ri="${ri}" onchange="updateBulkBar()"></td>
+        <td style="color:var(--tx3);font-size:11px">${ri+1}</td>
+        ${showPlat?`<td><span style="color:${esc(G.cols[r._p]||'#58a6ff')};font-weight:600;font-size:12px">${esc(r._p)}</span></td>`:''}
+        ${showDate?`<td style="font-size:11px;color:var(--tx2);font-family:'JetBrains Mono',monospace">${esc(r._d)}</td>`:''}
+        <td id="loc_${ri}" style="max-width:110px;"><div onclick="openLocEdit(${ri})" title="클릭하여 수정" style="cursor:pointer;display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:${r.location&&r.location!==r._p?'var(--acc2)':'var(--tx2)'}">${esc(r.location||r._p)}</span><span style="font-size:9px;color:var(--tx3);">✎</span></div></td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${esc(r.code)}</td>
+        <td style="max-width:220px">${esc(r.name)}</td>
+        <td style="text-align:right">${(+r.qty||0).toLocaleString()}</td>
+        <td id="exp_${ri}">
+          ${r.expiry
+            ?`<div class="exp-row"><span class="exp-d">${esc(ed)}</span></div>`
+            :`<span class="exp-empty">미설정</span>`}
+        </td>
+        <td id="suf_${ri}">
+          ${r.expiry?`<span class="exp-s">${esc(es)}</span>`:`<span style="color:var(--tx3)">-</span>`}
+        </td>
+        <td id="cpc_${ri}">
+          ${r.expiry?`<button class="cp-d" onclick="copyVal('${esc(ed)}',this)">복사</button>`:'-'}
+        </td>
+        <td>
+          <div style="display:flex;gap:4px;">
+            <button class="btn" style="font-size:10px;padding:3px 7px;" onclick="openInlineEdit(${ri})" title="소비기한 설정">📅</button>
+            <button class="btn" style="font-size:10px;padding:3px 7px;" onclick="openEditModal(${ri})" title="품목 수정">✏️</button>
+            <button class="btn" style="font-size:10px;padding:3px 7px;border-color:var(--acc2);color:var(--acc2);" onclick="openSplitModal(${ri})" title="수량 분할">🔀</button>
+            <button class="btn er" style="font-size:10px;padding:3px 7px;" onclick="deleteRow(${ri})" title="삭제">🗑</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+// ══════════════════════════════════════════
+//  INLINE EXPIRY EDIT
+// ══════════════════════════════════════════
+let calTarget={ri:-1,mode:''};  // 현재 달력 열린 대상
+let calState={y:new Date().getFullYear(),m:new Date().getMonth(),sel:null};
+
+function openInlineEdit(ri){
+  const r=_lastRows[ri];
+  // 편집 행으로 토글
+  const tr=$(`tr_${ri}`);
+  const expTd=$(`exp_${ri}`);
+  const sufTd=$(`suf_${ri}`);
+  const cpcTd=$(`cpc_${ri}`);
+
+  // 이미 편집 중이면 닫기
+  if(tr.classList.contains('tr-editing')){
+    closeInlineEditRow(ri); return;
+  }
+  // 기존 편집 중인 행 닫기
+  document.querySelectorAll('.tr-editing').forEach(t=>{
+    const oldRi=t.id.replace('tr_','');
+    closeInlineEditRow(parseInt(oldRi));
+  });
+
+  tr.classList.add('tr-editing');
+  const ed=r.expiry?r.expiry.slice(0,-1):'';
+  const es=r.expiry?r.expiry.slice(-1):'A';
+
+  expTd.innerHTML=`<div class="edit-cell">
+    <input class="ed-txt" id="einp_${ri}" value="${esc(toDisplay(ed))}" placeholder="YYYY-MM-DD" maxlength="10">
+    <button class="ed-cal" onclick="openCalFloat(event,${ri})">📅</button>
+  </div>`;
+  sufTd.innerHTML=`<select class="ed-suf" id="esuf_${ri}">
+    ${['A','B','C','D','E','F','G','H'].map(x=>`<option${x===es?' selected':''}>${x}</option>`).join('')}
+  </select>`;
+  cpcTd.innerHTML=`<div style="display:flex;gap:4px;">
+    <button class="btn ok" style="font-size:10px;padding:3px 8px;" onclick="saveInlineExpiry(${ri})">저장</button>
+    <button class="btn" style="font-size:10px;padding:3px 6px;" onclick="closeInlineEditRow(${ri})">✕</button>
+  </div>`;
+}
+
+function closeInlineEditRow(ri){
+  const r=_lastRows[ri]; if(!r) return;
+  const tr=$(`tr_${ri}`); if(!tr) return;
+  tr.classList.remove('tr-editing');
+  const ed=r.expiry?r.expiry.slice(0,-1):'';
+  const es=r.expiry?r.expiry.slice(-1):'';
+  $(`exp_${ri}`).innerHTML=r.expiry?`<div class="exp-row"><span class="exp-d">${esc(ed)}</span></div>`:`<span class="exp-empty">미설정</span>`;
+  $(`suf_${ri}`).innerHTML=r.expiry?`<span class="exp-s">${esc(es)}</span>`:`<span style="color:var(--tx3)">-</span>`;
+  $(`cpc_${ri}`).innerHTML=r.expiry?`<button class="cp-d" onclick="copyVal('${esc(ed)}',this)">복사</button>`:'-';
+}
+
+async function saveInlineExpiry(ri){
+  const r=_lastRows[ri];
+  const dateRaw=toStorage($(`einp_${ri}`)?.value.trim()||'');
+  const suf=$(`esuf_${ri}`)?.value||'A';
+  if(dateRaw&&!/^\d{8}$/.test(dateRaw.replace(/-/g,''))){toast('날짜는 YYYY-MM-DD 형식으로 입력해주세요','warn');return;}
+  const newExp=dateRaw?(dateRaw+suf):'';
+  const old=r.expiry;
+  if(old===newExp){closeInlineEditRow(ri);return;}
+
+  // 변경 확인 (기존 값이 있을 때)
+  if(old&&newExp){
+    const confirmed=await confirmChange(`<b>[${r._p}·${r._d}]</b> ${esc(r.name)}<br>소비기한: <b style="color:var(--ok)">${old.slice(0,-1)}</b> | <b style="color:var(--acc2)">${old.slice(-1)}</b> → <b style="color:var(--ok)">${newExp.slice(0,-1)}</b> | <b style="color:var(--acc2)">${newExp.slice(-1)}</b>`);
+    if(!confirmed) return;
+  }
+
+  const items=[...getItems(r._p,r._d)];
+  if(!items[r._i]) return;
+  items[r._i].expiry=newExp;
+  setItems(r._p,r._d,items);
+  r.expiry=newExp;
+
+  const logMsg=`[${r._p}·${r._d}] ${r.name} 소비기한 ${old?(old.slice(0,-1)+' | '+old.slice(-1)+' → '):'등록 '}${newExp?newExp.slice(0,-1)+' | '+newExp.slice(-1):'삭제'}`;
+  addLog(old&&newExp?'update':newExp?'create':'update', logMsg, nowStr());
+  save();
+  try{ await dbSaveItem(r._p,r._d,items[r._i]); }catch(e){toast('DB 저장 오류: '+e.message,'err');}
+  closeInlineEditRow(ri);
+  refresh(); toast('소비기한 저장됨','ok');
+}
+
+// 달력 팝업 (floating)
+function openCalFloat(e,ri){
+  e.stopPropagation();
+  calTarget.ri=ri;
+  const r=_lastRows[ri];
+  calState.y=new Date().getFullYear(); calState.m=new Date().getMonth();
+  // 기존 값 있으면 해당 월로
+  if(r.expiry&&r.expiry.length>=9){
+    const ds=r.expiry.slice(0,8);
+    calState.y=+ds.slice(0,4); calState.m=+ds.slice(4,6)-1;
+    calState.sel=ds.slice(0,4)+'-'+ds.slice(4,6)+'-'+ds.slice(6,8);
+  }else calState.sel=null;
+  const suf=r.expiry?r.expiry.slice(-1):'A';
+  $('calSuf').value=suf; $('calSufDirect').value='';
+  renderCalFloat();
+  const rect=e.target.getBoundingClientRect();
+  const cf=$('calFloat');
+  cf.style.left=Math.min(rect.left,window.innerWidth-280)+'px';
+  cf.style.top=Math.min(rect.bottom+window.scrollY+4,window.innerHeight-320+window.scrollY)+'px';
+  cf.classList.add('open');
+}
+function closeCalFloat(){$('calFloat').classList.remove('open');}
+function calNav(d){
+  calState.m+=d;
+  if(calState.m>11){calState.m=0;calState.y++;}
+  if(calState.m<0){calState.m=11;calState.y--;}
+  renderCalFloat();
+}
+function renderCalFloat(){
+  const{y,m,sel}=calState;
+  $('calFM').textContent=`${y}년 ${m+1}월`;
+  const days=['일','월','화','수','목','금','토'];
+  let h=days.map(d=>`<div class="cdn">${d}</div>`).join('');
+  const fd=new Date(y,m,1).getDay(), dim=new Date(y,m+1,0).getDate();
+  const td=new Date();
+  for(let i=0;i<fd;i++) h+=`<div class="cd empty"></div>`;
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${pad(m+1)}-${pad(d)}`;
+    const isT=td.getFullYear()===y&&td.getMonth()===m&&td.getDate()===d;
+    const isS=sel===ds;
+    h+=`<div class="cd${isS?' sel':''}${isT&&!isS?' td':''}" onclick="pickCalDay('${ds}')">${d}</div>`;
+  }
+  $('calFG').innerHTML=h;
+}
+function pickCalDay(ds){
+  calState.sel=ds;
+  renderCalFloat();
+  // 날짜 클릭 시 입력칸에 즉시 반영
+  const ri=calTarget.ri; if(ri<0) return;
+  const inp=$(`einp_${ri}`); if(inp) inp.value=ds; // ds는 이미 YYYY-MM-DD
+}
+function applyCalFloat(){
+  const ri=calTarget.ri; if(ri<0) return;
+  const dateVal=$(`einp_${ri}`)?.value.trim()||'';
+  if(!calState.sel&&!dateVal){toast('날짜를 선택하거나 입력하세요','warn');return;}
+  if(calState.sel&&!dateVal){
+    const inp=$(`einp_${ri}`); if(inp) inp.value=calState.sel; // YYYY-MM-DD
+  }
+  const suf=$('calSufDirect').value.trim().toUpperCase()||$('calSuf').value;
+  const sel=$(`esuf_${ri}`); if(sel) sel.value=suf;
+  closeCalFloat();
+  saveInlineExpiry(ri);
+}
+
+// ══════════════════════════════════════════
+//  BULK (일괄)
+// ══════════════════════════════════════════
+function updateBulkBar(){
+  const cnt=document.querySelectorAll('.rc:checked').length;
+  const bar=$('bulkBar');
+  bar.style.display=cnt>0?'flex':'none';
+  $('bulkCnt').textContent=`${cnt}개 선택`;
+}
+function selAllRows(cb){document.querySelectorAll('.rc').forEach(c=>c.checked=cb.checked);updateBulkBar();}
+function clearBulkSel(){document.querySelectorAll('.rc').forEach(c=>c.checked=false);$('bulkBar').style.display='none';}
+
+async function applyBulk(){
+  const dateRaw=toStorage($('bulkDate').value.trim());
+  if(!/^\d{8}$/.test(dateRaw.replace(/-/g,''))){toast('YYYY-MM-DD 형식으로 입력해주세요','warn');return;}
+  const suf=$('bulkSuf').value;
+  const code=dateRaw+suf;
+  const checked=[...document.querySelectorAll('.rc:checked')];
+  if(!checked.length){toast('항목을 선택하세요','warn');return;}
+  const ris=checked.map(c=>+c.dataset.ri);
+  const hasOld=ris.some(ri=>_lastRows[ri]?.expiry&&_lastRows[ri].expiry!==code);
+  if(hasOld){
+    const ok=await confirmChange(`선택 <b>${ris.length}개</b> 항목의 소비기한을 <b style="color:var(--ok)">${dateRaw}</b> | <b style="color:var(--acc2)">${suf}</b> 으로 변경합니다.`);
+    if(!ok) return;
+  }
+  const now=nowStr(); let cnt=0;
+  for(const ri of ris){
+    const r=_lastRows[ri]; if(!r) continue;
+    const old=r.expiry;
+    if(old===code) continue;
+    const items=[...getItems(r._p,r._d)];
+    if(!items[r._i]) continue;
+    items[r._i].expiry=code; r.expiry=code;
+    setItems(r._p,r._d,items);
+    addLog(old?'update':'create',`[${r._p}·${r._d}] ${r.name} → ${dateRaw} | ${suf}`,now);
+    try{ await dbSaveItem(r._p,r._d,items[r._i]); }catch(e){}
+    cnt++;
+  }
+  save(); clearBulkSel(); refresh();
+  toast(`${cnt}개 일괄 적용 완료`,'ok');
+}
+
+// ══════════════════════════════════════════
+//  EDIT MODAL (품목 수정)
+// ══════════════════════════════════════════
+function openEditModal(ri){
+  const r=_lastRows[ri];
+  G.editTarget={ri,plat:r._p,date:r._d,idx:r._i};
+  $('editCode').value=r.code;
+  $('editName').value=r.name;
+  $('editQty').value=r.qty;
+  $('editMo').classList.add('open');
+}
+async function saveEdit(){
+  const {ri,plat,date,idx}=G.editTarget;
+  const items=[...getItems(plat,date)];
+  if(!items[idx]) return;
+  const old={...items[idx]};
+  items[idx].code=$('editCode').value.trim();
+  items[idx].name=$('editName').value.trim();
+  items[idx].qty=+$('editQty').value||0;
+  if(!items[idx].code||!items[idx].name){toast('품목코드와 품목명은 필수입니다','warn');return;}
+  setItems(plat,date,items);
+  addLog('update',`[${plat}·${date}] 품목 수정: ${old.code}/${old.name} → ${items[idx].code}/${items[idx].name} (수량:${old.qty}→${items[idx].qty})`,nowStr());
+  save();
+  try{ await dbSaveItem(plat,date,items[idx]); }catch(e){toast('DB 오류: '+e.message,'err');}
+  closeMo('editMo'); refresh(); renderItemTable(getFilteredItems());
+  toast('품목 수정 완료','ok');
+}
+
+// ══════════════════════════════════════════
+//  DELETE ROW
+// ══════════════════════════════════════════
+async function deleteRow(ri){
+  const r=_lastRows[ri];
+  if(!confirm(`'${r.name}' 품목을 삭제하시겠습니까?`)) return;
+  const items=[...getItems(r._p,r._d)];
+  const deleted=items.splice(r._i,1)[0];
+  setItems(r._p,r._d,items);
+  addLog('delete',`[${r._p}·${r._d}] 품목 삭제: ${r.code} ${r.name}`,nowStr());
+  save();
+  try{ if(deleted.id) await dbDeleteItem(deleted.id); }catch(e){}
+  refresh(); renderItemTable(getFilteredItems());
+  toast('품목 삭제됨','warn');
+}
+
+// ══════════════════════════════════════════
+//  일괄 삭제 & 전체 삭제
+// ══════════════════════════════════════════
+async function bulkDelete(){
+  const checked=[...document.querySelectorAll('.rc:checked')];
+  if(!checked.length){toast('삭제할 항목을 선택하세요','warn');return;}
+  if(!confirm(`선택한 ${checked.length}개 품목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  // 플랫폼·날짜·인덱스별로 그룹핑 (인덱스 역순 삭제를 위해)
+  const grouped={};
+  checked.forEach(c=>{
+    const ri=+c.dataset.ri;
+    const r=_lastRows[ri]; if(!r) return;
+    const k=r._p+'||'+r._d;
+    if(!grouped[k]) grouped[k]={p:r._p,d:r._d,idxs:[]};
+    grouped[k].idxs.push(r._i);
+  });
+
+  const now=nowStr(); let cnt=0;
+  for(const {p,d,idxs} of Object.values(grouped)){
+    const items=[...getItems(p,d)];
+    // 인덱스 큰 것부터 삭제 (앞에서 삭제하면 뒤 인덱스 밀림 방지)
+    const sorted=[...idxs].sort((a,b)=>b-a);
+    const deleted=[];
+    sorted.forEach(i=>{
+      if(items[i]){deleted.push(items[i]);items.splice(i,1);cnt++;}
+    });
+    setItems(p,d,items);
+    addLog('delete',`[${p}·${d}] ${deleted.length}개 품목 일괄 삭제: ${deleted.map(x=>x.name).join(', ')}`,now);
+    // DB 삭제
+    for(const it of deleted){
+      if(it.id) try{ await dbDeleteItem(it.id); }catch(e){}
+    }
+  }
+  save(); clearBulkSel(); refresh();
+  renderItemTable(getFilteredItems());
+  toast(`${cnt}개 품목 삭제됨`,'warn');
+}
+
+async function deleteAllItems(){
+  if(!G.sel){toast('전체 보기에서는 플랫폼을 선택 후 삭제하세요','warn');return;}
+  const items=getItems(G.sel,G.date);
+  if(!items.length){toast('삭제할 품목이 없습니다','warn');return;}
+  if(!confirm(`[${G.sel} · ${G.date}]\n전체 ${items.length}개 품목을 모두 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+  const now=nowStr();
+  addLog('delete',`[${G.sel}·${G.date}] 전체 ${items.length}개 품목 삭제`,now);
+  // DB 삭제
+  for(const it of items){
+    if(it.id) try{ await dbDeleteItem(it.id); }catch(e){}
+  }
+  setItems(G.sel,G.date,[]);
+  save(); refresh(); renderItemTable(getFilteredItems());
+  toast(`${G.sel} · ${G.date} 전체 ${items.length}개 삭제됨`,'warn');
+}
+
+// ══════════════════════════════════════════
+//  COPY
+// ══════════════════════════════════════════
+function copyVal(val,btn){
+  navigator.clipboard.writeText(val).then(()=>{
+    if(btn){const o=btn.textContent;btn.textContent='✓';btn.style.opacity='.5';setTimeout(()=>{btn.textContent=o;btn.style.opacity='';},1600);}
+    toast(`복사: ${val}`,'ok');
+  });
+}
+
+// ══════════════════════════════════════════
+//  CONFIRM CHANGE (Promise)
+// ══════════════════════════════════════════
+function confirmChange(desc){
+  return new Promise(resolve=>{
+    $('chgDesc').innerHTML=desc;
+    $('chgMo').classList.add('open');
+    G.pending=resolve;
+  });
+}
+function doConfirm(){if(G.pending){G.pending(true);G.pending=null;} closeMo('chgMo');}
+function closeMo(id){
+  $(id).classList.remove('open');
+  if(G.pending){G.pending(false);G.pending=null;}
+}
+
+// ══════════════════════════════════════════
+//  UPLOAD
+// ══════════════════════════════════════════
+let previewData=[];
+function setupDrop(){
+  const dz=$('dropZone');
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');handleFile({target:{files:e.dataTransfer.files}});});
+}
+function handleFile(e){
+  const file=e.target.files?.[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      let start=0;
+      if(json[0]){const h=String(json[0][0]||'');if(h.includes('코드')||h.toLowerCase().includes('code'))start=1;}
+      previewData=[];
+      for(let i=start;i<json.length;i++){
+        const r=json[i]; if(!r[0]&&!r[1]) continue;
+        previewData.push({code:String(r[0]||'').trim(),name:String(r[1]||'').trim(),qty:+r[2]||0,expiry:''});
+      }
+      if(!previewData.length){toast('데이터 없음','warn');return;}
+      $('upDate').value=G.date;
+      const sel=$('upPlat');
+      for(let o of sel.options) if(o.value===G.sel){o.selected=true;break;}
+      $('upPreview').innerHTML=`<div style="font-size:12px;color:var(--tx2);margin-bottom:6px;">${previewData.length}건 미리보기</div>
+        <div class="tw" style="max-height:200px;overflow-y:auto;border-radius:var(--r);border:1px solid var(--b1);"><table>
+          <thead><tr><th>품목코드</th><th>품목명</th><th>수량</th></tr></thead>
+          <tbody>${previewData.map(r=>`<tr><td style="font-family:'JetBrains Mono',monospace;font-size:12px">${esc(r.code)}</td><td>${esc(r.name)}</td><td style="text-align:right">${r.qty.toLocaleString()}</td></tr>`).join('')}</tbody>
+        </table></div>`;
+      $('upArea').style.display='block';
+      toast(`${previewData.length}건 로드됨`,'ok');
+    }catch(err){toast('파일 오류: '+err.message,'err');}
+  };
+  reader.readAsArrayBuffer(file);
+  if(e.target.tagName==='INPUT') e.target.value='';
+}
+async function confirmUpload(){
+  if(!previewData.length) return;
+  const plat=$('upPlat').value, date=$('upDate').value;
+  if(!plat||!date){toast('플랫폼과 날짜를 선택하세요','warn');return;}
+  const existing=getItems(plat,date);
+  const merged=previewData.map(r=>{const ex=existing.find(e=>e.code===r.code);return{...r,expiry:ex?.expiry||'',id:ex?.id||null};});
+  setItems(plat,date,merged);
+  const now=nowStr();
+  addLog('create',`[${plat}·${date}] 엑셀 업로드 ${merged.length}건`,now);
+  G.sel=plat; G.date=date; $('selDate').value=date;
+  $('upArea').style.display='none'; previewData=[];
+  save(); renderPlats(); refresh();
+  // DB 저장
+  if(G.db.mode==='supabase'){
+    setSyncBadge(true);
+    try{ for(const it of merged) await dbSaveItem(plat,date,it); }
+    catch(e){toast('DB 저장 오류: '+e.message,'err');}
+    finally{setSyncBadge(false);}
+  }
+  toast(`${plat} · ${date} 에 ${merged.length}건 등록`,'ok');
+  goTab('items',document.querySelectorAll('.nt')[0]);
+}
+function cancelUpload(){$('upArea').style.display='none';previewData=[];}
+function dlTpl(){
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([['품목코드','품목명','수량'],['A001','아메리카노 200ml',500],['A002','카페라떼 200ml',300]]);
+  ws['!cols']=[{wch:12},{wch:22},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'출고품목');
+  XLSX.writeFile(wb,'출고품목_양식.xlsx');
+}
+// ══════════════════════════════════════════
+//  수기 입력
+// ══════════════════════════════════════════
+function openManualInput(){
+  // 플랫폼 목록 채우기
+  const sel=$('manPlat'); sel.innerHTML='';
+  G.plats.forEach(p=>{
+    const o=document.createElement('option');
+    o.value=p; o.textContent=p;
+    if(p===(G.sel||G.plats[0])) o.selected=true;
+    sel.appendChild(o);
+  });
+  $('manDate').value=G.date||todayStr();
+  $('manCode').value='';
+  $('manName').value='';
+  $('manQty').value='';
+  $('manSplitCnt').value='1';
+  renderSplitRows();
+  $('manualMo').classList.add('open');
+  setTimeout(()=>$('manName').focus(),100);
+}
+async function saveManualItem(){
+  const plat=$('manPlat').value;
+  const date=$('manDate').value;
+  const code=$('manCode').value.trim();
+  const name=$('manName').value.trim();
+  const totalQty=parseInt($('manQty').value)||0;
+  const splitCnt=parseInt($('manSplitCnt').value)||1;
+  if(!name){toast('품목명을 입력해주세요','warn');return;}
+  if(!totalQty||totalQty<1){toast('수량을 입력해주세요','warn');return;}
+  if(!date){toast('날짜를 선택해주세요','warn');return;}
+
+  // 분할 입력 수량 합계 검증
+  const splitRows=document.querySelectorAll('.split-row');
+  let usedQty=0;
+  splitRows.forEach(r=>{ usedQty+=parseInt(r.querySelector('.split-qty')?.value)||0; });
+  if(splitCnt>1 && usedQty!==totalQty){
+    toast('분할 수량 합계('+usedQty+')가 총 수량('+totalQty+')과 다릅니다','warn');return;
+  }
+
+  const now=nowStr();
+  if(splitCnt===1){
+    // 단일 등록
+    const expRaw=(splitRows[0]?.querySelector('.split-exp')?.value)||'';
+    const loc=(splitRows[0]?.querySelector('.split-loc')?.value)||'';
+    const itemName = loc ? name+' ['+loc+']' : name;
+    const qty = usedQty||totalQty;
+    const expiry = expRaw?(expRaw+'A'):'';
+    const items=getItems(plat,date);
+    const newItem={code,name:itemName,qty,expiry,location:loc||plat};
+    items.push(newItem);
+    setItems(plat,date,items);
+    save();
+    try{ await dbSaveItem(plat,date,newItem); }catch(e){}
+    addLog('create','['+plat+'·'+date+'] 수기입력: '+itemName+' ('+qty+'개)',now);
+  } else {
+    // 분할 등록
+    let added=0;
+    for(const row of splitRows){
+      const q=parseInt(row.querySelector('.split-qty')?.value)||0;
+      if(!q) continue;
+      const loc=row.querySelector('.split-loc')?.value||'';
+      const expRaw=row.querySelector('.split-exp')?.value||'';
+      const expiry=expRaw?(expRaw+'A'):'';
+      const itemName = loc ? name+' ['+loc+']' : name;
+      const items=getItems(plat,date);
+      const newItem={code,name:itemName,qty:q,expiry,location:loc||plat};
+      items.push(newItem);
+      setItems(plat,date,items);
+      save();
+      try{ await dbSaveItem(plat,date,newItem); }catch(e){}
+      addLog('create','['+plat+'·'+date+'] 수기입력(분할): '+itemName+' ('+q+'개)',now);
+      added++;
+    }
+    toast(added+'개 분할 항목 추가됨','ok');
+  }
+  closeMo('manualMo');
+  G.sel=plat; G.date=date;
+  $('selDate').value=date;
+  renderPlats(); refresh();
+  if(splitCnt===1) toast("'"+name+"' 추가됨",'ok');
+}
+
+// ══════════════════════════════════════════
+//  직접 DB 저장 (수동)
+// ══════════════════════════════════════════
+async function saveToDB(){
+  if(G.db.mode!=='supabase'){toast('DB가 연결되어 있지 않습니다','warn');return;}
+  if(!G.sel){toast('전체 보기에서는 플랫폼을 선택 후 저장하세요','warn');return;}
+  const items=getItems(G.sel,G.date);
+  if(!items.length){toast('저장할 품목이 없습니다','warn');return;}
+  setSyncBadge(true);
+  try{
+    for(const it of items) await dbSaveItem(G.sel,G.date,it);
+    toast(`${G.sel} · ${G.date} 저장 완료 (${items.length}건)`,'ok');
+  }catch(e){toast('저장 오류: '+e.message,'err');}
+  finally{setSyncBadge(false);}
+}
+
+// 탑바 전체 저장 - 모든 플랫폼·날짜 데이터 한번에 저장
+async function saveAllToDB(){
+  if(G.db.mode!=='supabase'){toast('DB가 연결되어 있지 않습니다. 상단 DB 배지를 클릭하세요','warn');return;}
+  const allKeys=Object.keys(G.data).filter(k=>G.data[k]&&G.data[k].length>0);
+  if(!allKeys.length){toast('저장할 데이터가 없습니다','warn');return;}
+  const btn=$('topSaveBtn');
+  btn.textContent='⏳ 저장 중...'; btn.disabled=true;
+  setSyncBadge(true);
+  let total=0;
+  try{
+    for(const k of allKeys){
+      const[p,d]=k.split('||');
+      for(const it of G.data[k]){ await dbSaveItem(p,d,it); total++; }
+    }
+    toast(`✅ 전체 저장 완료! (${total}건)`,'ok');
+  }catch(e){toast('저장 오류: '+e.message,'err');}
+  finally{
+    btn.textContent='💾 전체 저장'; btn.disabled=false;
+    setSyncBadge(false);
+  }
+}
+
+function exportItems(){
+  const rows=_lastRows;
+  if(!rows.length){toast('데이터 없음','warn');return;}
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([
+    ['플랫폼','날짜','출고지','품목코드','품목명','수량','소비기한','구분코드'],
+    ...rows.map(r=>[r._p,r._d,r.location||r._p,r.code,r.name,r.qty,r.expiry?r.expiry.slice(0,-1):'',r.expiry?r.expiry.slice(-1):''])
+  ]);
+  ws['!cols']=[{wch:10},{wch:12},{wch:12},{wch:12},{wch:24},{wch:8},{wch:12},{wch:8}];
+  XLSX.utils.book_append_sheet(wb,ws,'출고현황');
+  XLSX.writeFile(wb,`출고현황_${G.date}.xlsx`);
+}
+
+// ══════════════════════════════════════════
+//  LOG
+// ══════════════════════════════════════════
+function addLog(type,msg,time){G.logs.unshift({type,msg,time});renderLog();dbSaveLog(type,msg).catch(()=>{});}
+function renderLog(){
+  const el=$('logList');
+  const q=($('logQ')?.value||'').toLowerCase();
+  const logs=q?G.logs.filter(l=>l.msg.toLowerCase().includes(q)):G.logs;
+  if(!logs.length){el.innerHTML='<div class="es" style="padding:24px">변경 기록 없음</div>';return;}
+  el.innerHTML=logs.map(l=>`<div class="li ${l.type}"><span class="lt">${l.time}</span><span class="lm">${esc(l.msg)}</span></div>`).join('');
+}
+// ══════════════════════════════════════════
+//  비밀번호 & 로그 잠금
+// ══════════════════════════════════════════
+const LOG_PW = 'A4853';
+let pwResolve=null, pwReject=null, logUnlocked=false;
+
+function requirePw(){
+  return new Promise((resolve,reject)=>{
+    pwResolve=resolve; pwReject=reject;
+    $('pwInput').value=''; $('pwErr').style.display='none';
+    $('pwMo').classList.add('open');
+    setTimeout(()=>$('pwInput').focus(),100);
+  });
+}
+function checkPw(){
+  const val=$('pwInput').value.trim();
+  if(val===LOG_PW){
+    $('pwMo').classList.remove('open');
+    if(pwResolve){pwResolve(true);pwResolve=null;pwReject=null;}
+  }else{
+    $('pwErr').style.display='block';
+    $('pwInput').value=''; $('pwInput').focus();
+  }
+}
+async function unlockLog(){
+  try{
+    await requirePw();
+    logUnlocked=true;
+    $('logLock').style.display='none';
+    $('logContent').style.display='block';
+    renderLog();
+  }catch(e){}
+}
+function lockLog(){
+  logUnlocked=false;
+  $('logLock').style.display='flex';
+  $('logContent').style.display='none';
+}
+async function reqClearLog(){
+  if(!confirm('로그를 초기화하시겠습니까?')) return;
+  G.logs=[]; save(); renderLog(); toast('로그 초기화됨','warn');
+}
+
+function clearLog(){if(!confirm('로그 초기화?'))return;G.logs=[];save();renderLog();}
+function exportLog(){
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([['시각','유형','내용'],...G.logs.map(l=>[l.time,l.type,l.msg])]);
+  ws['!cols']=[{wch:20},{wch:8},{wch:60}];
+  XLSX.utils.book_append_sheet(wb,ws,'변경로그');
+  XLSX.writeFile(wb,'소비기한_변경로그.xlsx');
+}
+
+// ══════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════
+function refreshDash(){
+  const from=$('dFrom').value, to=$('dTo').value, platF=$('dPlat').value;
+  let all=[];
+  Object.keys(G.data).forEach(k=>{
+    const[p,d]=k.split('||');
+    if(platF&&p!==platF) return;
+    if(from&&d<from) return;
+    if(to&&d>to) return;
+    G.data[k].forEach(it=>all.push({...it,_p:p,_d:d}));
+  });
+  const total=all.length, we=all.filter(i=>i.expiry).length;
+  const qty=all.reduce((s,i)=>s+(+i.qty||0),0);
+  const udates=new Set(all.map(i=>i._d)).size;
+  $('dSumGrid').innerHTML=`
+    <div class="sc"><div class="sv">${total}</div><div class="sl">총 품목 수</div></div>
+    <div class="sc"><div class="sv">${qty.toLocaleString()}</div><div class="sl">총 수량</div></div>
+    <div class="sc"><div class="sv" style="color:var(--ok)">${we}</div><div class="sl">소비기한 등록</div></div>
+    <div class="sc"><div class="sv" style="color:var(--warn)">${udates}</div><div class="sl">조회 날짜 수</div></div>`;
+  // 플랫폼별
+  const pm={};G.plats.forEach(p=>{pm[p]=0;});all.forEach(i=>{if(pm[i._p]!==undefined)pm[i._p]++;});
+  const mx=Math.max(...Object.values(pm),1);
+  $('dPlatBar').innerHTML=G.plats.map(p=>`<div class="br"><div class="bl">${esc(p)}</div><div class="bt"><div class="bf" style="width:${(pm[p]||0)/mx*100}%;background:${esc(G.cols[p]||'#58a6ff')}"></div></div><div class="bv">${pm[p]||0}</div></div>`).join('');
+  // 등록률
+  const pct=total?Math.round(we/total*100):0;
+  $('dExpStat').innerHTML=`<div style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--ok)">등록 ${we}건</span><span style="color:var(--warn)">미등록 ${total-we}건</span></div>
+    <div style="height:10px;background:var(--s3);border-radius:5px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--ok);border-radius:5px;transition:.4s;"></div></div>
+    <div style="text-align:center;font-size:20px;font-weight:700;color:var(--ok);margin-top:8px">${pct}%</div>
+  </div>
+  <div class="sr"><span class="sk">전체</span><span class="sv2">${total}건</span></div>
+  <div class="sr"><span class="sk">등록완료</span><span class="sv2" style="color:var(--ok)">${we}건</span></div>
+  <div class="sr"><span class="sk">미등록</span><span class="sv2" style="color:var(--warn)">${total-we}건</span></div>`;
+  // 날짜별
+  const dm={};all.forEach(i=>{if(!dm[i._d])dm[i._d]=0;dm[i._d]++;});
+  const dates=Object.keys(dm).sort().slice(-14);
+  const mxd=Math.max(...dates.map(d=>dm[d]),1);
+  $('dDateBar').innerHTML=dates.length?dates.map(d=>`<div class="br"><div class="bl" style="font-family:'JetBrains Mono',monospace;font-size:11px">${d.slice(5)}</div><div class="bt"><div class="bf" style="width:${dm[d]/mxd*100}%;background:var(--acc)"></div></div><div class="bv">${dm[d]}</div></div>`).join(''):'<div style="color:var(--tx3);padding:16px 0;font-size:12px">데이터 없음</div>';
+  // 출고지별 현황
+  const lm={};
+  all.forEach(i=>{
+    const loc=i.location||i._p;
+    if(!lm[loc]) lm[loc]={cnt:0,qty:0,we:0};
+    lm[loc].cnt++; lm[loc].qty+=(+i.qty||0);
+    if(i.expiry) lm[loc].we++;
+  });
+  const locEntries=Object.entries(lm).sort((a,b)=>b[1].qty-a[1].qty);
+  const mxl=Math.max(...locEntries.map(e=>e[1].qty),1);
+  $('dLocBar').innerHTML=locEntries.length
+    ?locEntries.map(([loc,v])=>`<div class="br">
+      <div class="bl" title="${esc(loc)}" style="width:90px;">${esc(loc)}</div>
+      <div class="bt"><div class="bf" style="width:${v.qty/mxl*100}%;background:var(--acc2)"></div></div>
+      <div class="bv" style="width:60px;text-align:right;font-size:11px">${v.qty.toLocaleString()}개</div>
+    </div>`).join('')
+    :'<div style="color:var(--tx3);padding:16px 0;font-size:12px">데이터 없음</div>';
+  // 최근 로그
+  $('dRecentLog').innerHTML=G.logs.slice(0,8).map(l=>`<div class="li ${l.type}" style="margin-bottom:4px;"><span class="lt">${l.time.slice(5)}</span><span class="lm" style="font-size:11px">${esc(l.msg)}</span></div>`).join('')||'<div style="color:var(--tx3);padding:16px 0;font-size:12px">없음</div>';
+}
+function resetDash(){$('dFrom').value='';$('dTo').value='';$('dPlat').value='';refreshDash();}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+function toast(msg,type='ok'){
+  const w=$('toastWrap');
+  const t=document.createElement('div');
+  t.className=`toast ${type}`; t.textContent=msg;
+  w.appendChild(t); setTimeout(()=>t.remove(),3000);
+}
+
+
+// ══════════════════════════════════════════
+//  설정 탭
+// ══════════════════════════════════════════
+function renderSettingsTab(){
+  // 플랫폼 목록
+  const pl = document.getElementById('settingsPlatList');
+  if(!pl) return;
+  pl.innerHTML = G.plats.map(p => {
+    const col = G.cols[p]||'#58a6ff';
+    const locs = (G.locations[p]||[]);
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:var(--r);">'
+      + '<span style="width:10px;height:10px;border-radius:50%;background:' + col + ';flex-shrink:0;display:inline-block;"></span>'
+      + '<span style="flex:1;font-size:13px;">' + esc(p) + '</span>'
+      + '<span style="font-size:11px;color:var(--tx3);">출고지 ' + locs.length + '개</span>'
+      + '</div>';
+  }).join('') || '<div style="color:var(--tx3);font-size:12px;">플랫폼 없음</div>';
+
+  // 출고지 관리 - 플랫폼 셀렉트 업데이트
+  const sp = document.getElementById('settingsPlatSel');
+  if(sp){
+    const cur = sp.value;
+    sp.innerHTML = '<option value="">플랫폼 선택...</option>';
+    G.plats.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p; o.textContent = p;
+      if(p === cur) o.selected = true;
+      sp.appendChild(o);
+    });
+  }
+  renderSettingsLocations();
+}
+
+function renderSettingsLocations(){
+  const p = document.getElementById('settingsPlatSel')?.value;
+  const wrap = document.getElementById('settingsLocList');
+  const addArea = document.getElementById('settingsLocAdd');
+  if(!wrap) return;
+  if(!p){
+    wrap.innerHTML = '<div style="color:var(--tx3);font-size:12px;padding:12px 0;">위에서 플랫폼을 선택해주세요</div>';
+    if(addArea) addArea.style.display='none';
+    return;
+  }
+  if(addArea) addArea.style.display='flex';
+  const locs = G.locations[p]||[];
+  if(!locs.length){
+    wrap.innerHTML = '<div style="color:var(--tx3);font-size:12px;padding:8px 0;">등록된 출고지가 없습니다</div>';
+    return;
+  }
+  wrap.innerHTML = locs.map((l,i) =>
+    '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:var(--r);">'
+    + '<span style="font-size:13px;flex:1;">🚚 ' + esc(l) + '</span>'
+    + '<button class="p-del" style="color:var(--err);" onclick="settingsDelLoc(' + "'" + esc(p) + "'" + ',' + i + ')">×</button>'
+    + '</div>'
+  ).join('');
+}
+
+function settingsAddPlat(){
+  const inp = document.getElementById('settingsNewPlat');
+  const name = inp.value.trim();
+  if(!name){toast('플랫폼명을 입력하세요','warn');return;}
+  if(G.plats.includes(name)){toast('이미 존재합니다','warn');return;}
+  const col = CPOOL[G.plats.length % CPOOL.length];
+  G.cols[name]=col; G.plats.push(name); inp.value='';
+  save(); renderPlats(); renderSettingsTab();
+  dbSavePlat(name,col);
+  toast("'" + name + "' 추가됨",'ok');
+}
+
+function settingsAddLoc(){
+  const p = document.getElementById('settingsPlatSel')?.value;
+  const inp = document.getElementById('settingsNewLoc');
+  const name = inp.value.trim();
+  if(!p){toast('플랫폼을 선택하세요','warn');return;}
+  if(!name){toast('출고지명을 입력하세요','warn');return;}
+  if(!G.locations[p]) G.locations[p]=[];
+  if(G.locations[p].includes(name)){toast('이미 존재합니다','warn');return;}
+  G.locations[p].push(name); inp.value='';
+  save(); renderSettingsLocations(); updateManLocDropdown();
+  toast("'" + name + "' 출고지 추가됨",'ok');
+}
+
+function settingsDelLoc(p, idx){
+  if(!confirm('출고지를 삭제하시겠습니까?')) return;
+  if(G.locations[p]) G.locations[p].splice(idx,1);
+  save(); renderSettingsLocations();
+  toast('출고지 삭제됨','warn');
+}
+
+// ══════════════════════════════════════════
+//  수기입력 분할 기능
+// ══════════════════════════════════════════
+function updateManLocDropdown(){
+  renderSplitRows();
+}
+
+function renderSplitRows(){
+  const cnt = parseInt(document.getElementById('manSplitCnt')?.value)||1;
+  const plat = document.getElementById('manPlat')?.value||'';
+  const locs = G.locations[plat]||[];
+  const wrap = document.getElementById('splitRowsWrap');
+  if(!wrap) return;
+
+  // 기존 행 값 백업
+  const prev=[];
+  wrap.querySelectorAll('.split-row').forEach(r=>{
+    prev.push({loc:r.querySelector('.split-loc')?.value||'', qty:r.querySelector('.split-qty')?.value||'', exp:r.querySelector('.split-exp')?.value||''});
+  });
+
+  wrap.innerHTML='';
+  for(let i=0;i<cnt;i++){
+    const locOpts = locs.length
+      ? '<option value="">출고지 선택</option>' + locs.map(l=>'<option value="'+esc(l)+'"'+(prev[i]&&prev[i].loc===l?' selected':'')+'>'+esc(l)+'</option>').join('')
+      : '<option value="">출고지 없음(설정탭에서 추가)</option>';
+    const row = document.createElement('div');
+    row.className='split-row';
+    row.style.cssText='background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:10px 12px;';
+    row.innerHTML =
+      '<div style="font-size:11px;font-weight:700;color:var(--acc);margin-bottom:6px;">분할 ' + (i+1) + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 80px 120px;gap:6px;align-items:center;">'
+      + '<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">출고지</label>'
+      + '<select class="fi split-loc" style="width:100%;font-size:12px;" onchange="updateSplitRemain()">'
+      + locOpts + '</select></div>'
+      + '<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">수량</label>'
+      + '<input type="number" class="fi split-qty" placeholder="0" min="0" style="width:100%;font-size:12px;" oninput="updateSplitRemain()" value="'+(prev[i]?prev[i].qty||'':'')+'"></div>'
+      + '<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">소비기한 (선택)</label>'
+      + '<input type="date" class="fi split-exp" style="width:100%;font-size:12px;" value="'+(prev[i]?prev[i].exp||'':'')+'"></div>'
+      + '</div>';
+    wrap.appendChild(row);
+  }
+  updateSplitRemain();
+}
+
+function updateSplitRemain(){
+  const total = parseInt(document.getElementById('manQty')?.value)||0;
+  const rows = document.querySelectorAll('.split-row');
+  let used=0;
+  rows.forEach(r=>{ used += parseInt(r.querySelector('.split-qty')?.value)||0; });
+  const remain = total - used;
+  const rw = document.getElementById('splitRemainWrap');
+  const rs = document.getElementById('splitRemain');
+  if(rs) rs.textContent = remain;
+  if(rw) rw.style.display = (remain!==0&&total>0)?'block':'none';
+}
+
+
+// ══════════════════════════════════════════
+//  품목 분할 (기존 등록 품목)
+// ══════════════════════════════════════════
+let _splitTarget = null; // {ri, r}
+
+function openSplitModal(ri){
+  const r = _lastRows[ri];
+  if(!r){ toast('품목 정보를 찾을 수 없습니다','err'); return; }
+  _splitTarget = {ri, r};
+
+  // 원본 정보 표시
+  const info = document.getElementById('splitOriginInfo');
+  info.innerHTML =
+    '<div><span style="color:var(--tx2);font-size:11px;">플랫폼</span><br><strong style="color:var(--acc)">'+esc(r._p)+'</strong></div>'
+    +'<div><span style="color:var(--tx2);font-size:11px;">날짜</span><br><strong>'+esc(r._d)+'</strong></div>'
+    +'<div><span style="color:var(--tx2);font-size:11px;">품목코드</span><br><strong style="font-family:JetBrains Mono,monospace">'+esc(r.code||'-')+'</strong></div>'
+    +'<div style="flex:1;"><span style="color:var(--tx2);font-size:11px;">품목명</span><br><strong>'+esc(r.name)+'</strong></div>'
+    +'<div><span style="color:var(--tx2);font-size:11px;">총 수량</span><br><strong style="color:var(--warn);font-size:16px;">'+((+r.qty)||0).toLocaleString()+'</strong></div>';
+
+  // 분할 개수 초기화
+  document.getElementById('splitMoCnt').value = '2';
+  document.getElementById('splitMoWarn').style.display = 'none';
+  renderSplitMoRows();
+  $('splitMo').classList.add('open');
+}
+
+function renderSplitMoRows(){
+  if(!_splitTarget) return;
+  const r = _splitTarget.r;
+  const total = (+r.qty)||0;
+  const cnt = parseInt(document.getElementById('splitMoCnt').value)||2;
+  const plat = r._p;
+  const locs = G.locations[plat]||[];
+  const wrap = document.getElementById('splitMoRows');
+
+  // 기존 입력값 백업
+  const prev = [];
+  wrap.querySelectorAll('.smo-row').forEach(row=>{
+    prev.push({
+      loc: row.querySelector('.smo-loc')?.value||'',
+      name: row.querySelector('.smo-name')?.value||'',
+      qty: row.querySelector('.smo-qty')?.value||'',
+      exp: row.querySelector('.smo-exp')?.value||''
+    });
+  });
+
+  wrap.innerHTML = '';
+  // 균등 분배 기본값
+  const base = Math.floor(total/cnt);
+  const rem = total % cnt;
+
+  for(let i=0;i<cnt;i++){
+    const defQty = prev[i]?.qty !== undefined && prev[i].qty !== '' ? prev[i].qty : (base + (i<rem?1:0));
+    const defName = prev[i]?.name || r.name;
+    const defLoc = prev[i]?.loc || '';
+    const defExp = prev[i]?.exp || (r.expiry?r.expiry.slice(0,-1):'');
+
+    const locOpts = locs.length
+      ? '<option value="">출고지 선택</option>' + locs.map(l=>'<option value="'+esc(l)+'"'+(defLoc===l?' selected':'')+'>'+esc(l)+'</option>').join('')
+      : '<option value="">출고지 없음</option>';
+
+    const row = document.createElement('div');
+    row.className = 'smo-row';
+    row.style.cssText = 'background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:10px 12px;';
+    row.innerHTML =
+      '<div style="font-size:11px;font-weight:700;color:var(--acc2);margin-bottom:7px;">분할 '+(i+1)+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 70px 110px;gap:6px;align-items:end;">'
+      +'<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">품목명</label>'
+      +'<input type="text" class="fi smo-name" value="'+esc(defName)+'" style="width:100%;font-size:12px;"></div>'
+      +'<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">출고지</label>'
+      +'<select class="fi smo-loc" style="width:100%;font-size:12px;" onchange="updateSplitMoRemain()">'+locOpts+'</select></div>'
+      +'<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">수량</label>'
+      +'<input type="number" class="fi smo-qty" value="'+defQty+'" min="1" style="width:100%;font-size:12px;" oninput="updateSplitMoRemain()"></div>'
+      +'<div><label style="font-size:10px;color:var(--tx2);display:block;margin-bottom:3px;">소비기한</label>'
+      +'<input type="date" class="fi smo-exp" value="'+esc(defExp)+'" style="width:100%;font-size:12px;"></div>'
+      +'</div>';
+    wrap.appendChild(row);
+  }
+  updateSplitMoRemain();
+}
+
+function updateSplitMoRemain(){
+  if(!_splitTarget) return;
+  const total = (+_splitTarget.r.qty)||0;
+  let used = 0;
+  document.querySelectorAll('.smo-qty').forEach(el=>{ used += parseInt(el.value)||0; });
+  const remain = total - used;
+  const badge = document.getElementById('splitMoRemainBadge');
+  const warn = document.getElementById('splitMoWarn');
+  if(remain === 0){
+    badge.innerHTML = '<span style="color:var(--ok);font-weight:600;">✅ 수량 일치 ('+total+')</span>';
+    warn.style.display = 'none';
+  } else if(remain > 0){
+    badge.innerHTML = '<span style="color:var(--warn);font-weight:600;">잔여 수량: '+remain+'</span>';
+    warn.style.display = 'block';
+    warn.textContent = '⚠️ 분할 수량 합계('+used+')가 총 수량('+total+')보다 '+remain+' 부족합니다.';
+  } else {
+    badge.innerHTML = '<span style="color:var(--err);font-weight:600;">초과: '+Math.abs(remain)+'</span>';
+    warn.style.display = 'block';
+    warn.textContent = '❌ 분할 수량 합계('+used+')가 총 수량('+total+')을 '+Math.abs(remain)+' 초과했습니다.';
+  }
+}
+
+async function confirmSplit(){
+  if(!_splitTarget){ closeMo('splitMo'); return; }
+  const {ri, r} = _splitTarget;
+  const total = (+r.qty)||0;
+
+  // 유효성 검사
+  const rows = document.querySelectorAll('.smo-row');
+  let used = 0;
+  const splitItems = [];
+  for(const row of rows){
+    const name = row.querySelector('.smo-name')?.value.trim()||r.name;
+    const loc  = row.querySelector('.smo-loc')?.value||'';
+    const qty  = parseInt(row.querySelector('.smo-qty')?.value)||0;
+    const expRaw = row.querySelector('.smo-exp')?.value||'';
+    if(!qty||qty<1){ toast('수량이 0인 분할 항목이 있습니다','warn'); return; }
+    used += qty;
+    splitItems.push({name, loc, qty, expRaw});
+  }
+  if(used !== total){
+    toast('분할 수량 합계('+used+')와 총 수량('+total+')이 맞지 않습니다','warn');
+    return;
+  }
+
+  const confirmed = await confirmChange(
+    '원본 품목 <b>'+esc(r.name)+'</b> ('+total+'개)를<br>'
+    +splitItems.map((s,i)=>'분할'+(i+1)+': '+esc(s.name+(s.loc?' ['+s.loc+']':''))+' <b>'+s.qty+'개</b>').join(' / ')
+    +'<br><span style="color:var(--warn);">원본은 삭제되고 분할본으로 대체됩니다.</span>'
+  );
+  if(!confirmed) return;
+
+  const now = nowStr();
+  const items = [...getItems(r._p, r._d)];
+
+  // 원본 삭제
+  const deleted = items.splice(r._i, 1)[0];
+  if(deleted?.id){
+    try{ await dbDeleteItem(deleted.id); }catch(e){}
+  }
+  addLog('delete', '['+r._p+'·'+r._d+'] 분할 원본 삭제: '+r.name+' ('+total+'개)', now);
+
+  // 분할 항목 추가
+  for(const s of splitItems){
+    const itemName = s.loc ? s.name+' ['+s.loc+']' : s.name;
+    const expiry = s.expRaw ? s.expRaw+'A' : '';
+    const newItem = {code:r.code, name:itemName, qty:s.qty, expiry, location:s.loc||r._p};
+    items.push(newItem);
+    try{ await dbSaveItem(r._p, r._d, newItem); }catch(e){}
+    addLog('create', '['+r._p+'·'+r._d+'] 분할 추가: '+itemName+' ('+s.qty+'개)', now);
+  }
+
+  setItems(r._p, r._d, items);
+  save();
+  closeMo('splitMo');
+  _splitTarget = null;
+  refresh();
+  toast(splitItems.length+'개로 분할 완료','ok');
+}
+
+
+// ══════════════════════════════════════════
+//  출고지 인라인 편집
+// ══════════════════════════════════════════
+function openLocEdit(ri){
+  const r = _lastRows[ri];
+  const td = document.getElementById('loc_'+ri);
+  if(!td) return;
+
+  // 이미 편집 중이면 닫기
+  if(td.querySelector('input')) return;
+
+  const plat = r._p;
+  const locs = G.locations[plat]||[];
+  const curLoc = r.location||plat;
+
+  // Dropdown 옵션: 출고지 목록 있으면 select, 없으면 input
+  let editHtml = '';
+  if(locs.length){
+    const opts = '<option value="'+esc(plat)+'"'+(curLoc===plat?' selected':'')+'>'+esc(plat)+'</option>'
+      + locs.map(l=>'<option value="'+esc(l)+'"'+(curLoc===l?' selected':'')+'>'+esc(l)+'</option>').join('');
+    editHtml = '<select class="fi" id="locInp_'+ri+'" style="width:100%;font-size:12px;padding:3px 6px;" onchange="saveLocEdit('+ri+')" onblur="cancelLocEdit('+ri+')">'
+      + opts + '</select>';
+  } else {
+    editHtml = '<input type="text" class="fi" id="locInp_'+ri+'" value="'+esc(curLoc)+'" style="width:100%;font-size:12px;padding:3px 6px;" onblur="saveLocEdit('+ri+')" onkeydown="if(event.key===\'Enter\')saveLocEdit('+ri+');if(event.key===\'Escape\')cancelLocEdit('+ri+');">';
+  }
+  td.innerHTML = editHtml;
+  const inp = document.getElementById('locInp_'+ri);
+  if(inp){ inp.focus(); if(inp.tagName==='INPUT') inp.select(); }
+}
+
+async function saveLocEdit(ri){
+  const r = _lastRows[ri];
+  const inp = document.getElementById('locInp_'+ri);
+  if(!inp) return;
+  const newLoc = inp.value.trim() || r._p;
+  const oldLoc = r.location||r._p;
+
+  // 업데이트
+  const items = [...getItems(r._p, r._d)];
+  if(items[r._i]){
+    items[r._i].location = newLoc;
+    r.location = newLoc;
+    setItems(r._p, r._d, items);
+    save();
+    try{ await dbSaveItem(r._p, r._d, items[r._i]); }catch(e){}
+    if(oldLoc !== newLoc){
+      addLog('update','['+r._p+'·'+r._d+'] '+r.name+' 출고지: '+oldLoc+' → '+newLoc, nowStr());
+    }
+  }
+
+  // 셀 복원
+  const td = document.getElementById('loc_'+ri);
+  if(td){
+    const isCustom = newLoc !== r._p;
+    td.innerHTML = '<div onclick="openLocEdit('+ri+')" title="클릭하여 수정" style="cursor:pointer;display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:'+(isCustom?'var(--acc2)':'var(--tx2)')+';">'+esc(newLoc)+'</span><span style="font-size:9px;color:var(--tx3);">✎</span></div>';
+  }
+}
+
+function cancelLocEdit(ri){
+  const r = _lastRows[ri];
+  const td = document.getElementById('loc_'+ri);
+  if(!td) return;
+  const loc = r.location||r._p;
+  const isCustom = loc !== r._p;
+  td.innerHTML = '<div onclick="openLocEdit('+ri+')" title="클릭하여 수정" style="cursor:pointer;display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:'+(isCustom?'var(--acc2)':'var(--tx2)')+';">'+esc(loc)+'</span><span style="font-size:9px;color:var(--tx3);">✎</span></div>';
+}
+
+window.onload=init;
+
+// 페이지 닫기 전 저장 안내
+window.addEventListener('beforeunload', function(e){
+  if(G.db.mode==='supabase'&&Object.keys(G.data).some(k=>G.data[k]&&G.data[k].length>0)){
+    e.preventDefault();
+    e.returnValue='저장되지 않은 데이터가 있을 수 있습니다. 상단 💾 전체 저장 버튼을 눌렀는지 확인해주세요.';
+  }
+});
+</script>
+</body>
+</html>
